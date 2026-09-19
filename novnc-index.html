@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>NRO Remote</title>
+  <style>
+    html,body,#screen{width:100%;height:100%;margin:0;background:#111;overflow:hidden}
+    #status{position:fixed;z-index:10;top:8px;left:50%;transform:translateX(-50%);
+      padding:7px 12px;border-radius:8px;background:rgba(0,0,0,.72);color:#fff;
+      font:13px system-ui,sans-serif;white-space:nowrap}
+    #screen{display:flex}
+  </style>
+</head>
+<body>
+  <div id="status">Connecting…</div>
+  <div id="screen"></div>
+  <script type="module">
+    import RFB from './core/rfb.js';
+
+    const status = document.getElementById('status');
+    const screen = document.getElementById('screen');
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUrl = proto + '://' + location.host + '/websockify';
+
+    status.textContent = 'Connecting to VNC…';
+
+    const rfb = new RFB(screen, wsUrl);
+    rfb.scaleViewport = true;
+    rfb.resizeSession = true;
+    rfb.focusOnClick = true;
+
+    rfb.addEventListener('credentialsrequired', () => {
+      const password = prompt('VNC password:');
+      if (password !== null) rfb.sendCredentials({password});
+    });
+
+    rfb.addEventListener('connect', () => {
+      status.textContent = 'Connected';
+      setTimeout(() => status.style.display = 'none', 1000);
+    });
+
+    rfb.addEventListener('disconnect', (e) => {
+      status.style.display = 'block';
+      status.textContent = e.detail.clean
+        ? 'Disconnected — reload page to reconnect'
+        : 'VNC connection failed — check Blitz logs';
+    });
+
+    rfb.addEventListener('securityfailure', (e) => {
+      status.style.display = 'block';
+      status.textContent = 'VNC authentication failed';
+    });
+  </script>
+</body>
+</html>

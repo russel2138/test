@@ -7,10 +7,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     VNC_PORT=5900 \
     JAVA_XMX=160m
 
-# Keep the runtime deliberately small:
+# Lightweight runtime:
 # - Xvfb: virtual X display required by MicroEmulator/AWT
-# - x11vnc: lightweight VNC bridge
-# - novnc + websockify: browser access without a desktop environment
+# - x11vnc: VNC server
+# - noVNC + websockify: browser access through Blitz's own app address
 # - Java 17: MicroEmulator runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates wget unzip \
@@ -27,21 +27,16 @@ RUN wget -O /tmp/microemulator.zip \
     && mv /opt/microemulator-2.0.4 /app/microemu \
     && rm -f /tmp/microemulator.zip
 
-# noVNC is static HTML/JS. Install the upstream release directly instead of
-# Debian's novnc package, which pulls Node.js/NumPy that are unnecessary here.
+# noVNC is static HTML/JS.
 RUN wget -qO /tmp/novnc.tar.gz \
       https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz \
     && tar -xzf /tmp/novnc.tar.gz -C /opt \
     && mv /opt/noVNC-1.7.0 /usr/share/novnc \
     && rm -rf /usr/share/novnc/docs /usr/share/novnc/tests /usr/share/novnc/.github \
+    && rm -f /usr/share/novnc/index.html \
     && rm -f /tmp/novnc.tar.gz
 
-RUN ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
-
-# Optional remote access for background-only hosts such as Blitz.
-RUN wget -qO /usr/local/bin/cloudflared \
-      https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-    && chmod 0755 /usr/local/bin/cloudflared
+COPY novnc-index.html /usr/share/novnc/index.html
 
 RUN set -eux; \
     groupadd -g 1000 app; \
@@ -55,10 +50,9 @@ COPY --chown=1000:1000 run-game.sh /app/run-game.sh
 COPY --chown=1000:1000 run-vnc.sh /app/run-vnc.sh
 COPY --chown=1000:1000 run-web.sh /app/run-web.sh
 COPY --chown=1000:1000 upload.py /app/upload.py
-COPY --chown=1000:1000 run-tunnel.sh /app/run-tunnel.sh
 COPY --chown=1000:1000 nroctl /app/nroctl
 COPY --chown=1000:1000 start.sh /app/start.sh
-RUN chmod +x /app/*.sh /app/nroctl
+RUN chmod +x /app/*.sh /app/nroctl /app/upload.py
 
 USER 1000:1000
 WORKDIR /data

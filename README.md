@@ -1,114 +1,59 @@
-# NRO + MicroEmulator lightweight runtime
+# NRO + MicroEmulator on Blitz
 
-This image is optimized for tiny always-on container hosts such as Blitz Cloud.
-
-## Runtime
-
-The stack intentionally avoids a desktop environment and Xpra:
-
-- **Xvfb**: virtual X display required by MicroEmulator/AWT.
-- **MicroEmulator 2.0.4 + Java 17**: runs `/data/game.jar`.
-- **x11vnc**: optional VNC access.
-- **noVNC/websockify**: optional browser bridge.
-- **cloudflared Quick Tunnel**: optional public URL for background-worker hosts.
-
-The game only needs **Xvfb**. VNC, browser access and the tunnel can all stop without stopping the game.
-
-## Independent components
-
-Every component has its own supervisor and PID files:
+App URL:
 
 ```
-display  -> Xvfb
-game     -> Java + MicroEmulator
-vnc      -> x11vnc
-web      -> websockify + noVNC
-tunnel   -> cloudflared
+https://nro.pyoska.blitz.cloud
 ```
 
-Use:
+No Cloudflare tunnel is used.
 
-```bash
-/app/nroctl status
-/app/nroctl start game
-/app/nroctl stop game
-/app/nroctl restart game
-/app/nroctl log game
+## Persistent game and login state
 
-/app/nroctl stop remote
-/app/nroctl start remote
-```
+The game JAR is **not stored in Git**.
 
-`remote` means only `vnc + web + tunnel`. Stopping it does **not** stop the game.
-
-## Persistent files
-
-Keep `/data` persistent.
-
-Required:
+Runtime JAR:
 
 ```
 /data/game.jar
 ```
 
-Game/RMS state stays in:
+RMS/login state:
 
 ```
 /data/microemu-home/.microemulator
 ```
 
-Remote-access files, when enabled:
+If `/data/game.jar` already exists, it is used as-is and is never overwritten by deploys.
+
+If it is missing, the app URL temporarily shows a password-protected upload page. Upload a valid J2ME JAR there; it is saved atomically as `/data/game.jar`. The game supervisor then starts it automatically and the same URL switches back to noVNC.
+
+## Runtime
 
 ```
-/data/vnc-password.txt
-/data/vnc.pass
-/data/tunnel-url.txt
+Blitz address
+  -> noVNC/websockify
+  -> x11vnc
+  -> Xvfb
+  -> MicroEmulator + /data/game.jar
 ```
 
-If `/data/game.jar` is missing, the web component temporarily serves a one-time upload page on the same remote URL. After a valid J2ME JAR is uploaded, it is saved as `/data/game.jar`; the uploader exits and the same port switches to noVNC.
-
-## Defaults
+Components are independent:
 
 ```
-DISPLAY=:99
-JAVA_XMX=160m
-NOVNC_PORT=8080
-VNC_PORT=5900
-REMOTE_ENABLED=1
-TUNNEL_ENABLED=1
+display  -> Xvfb
+game     -> Java + MicroEmulator
+vnc      -> x11vnc
+web      -> uploader when JAR is missing, otherwise noVNC/websockify
 ```
 
-For the lightest steady-state after the account is already logged in:
-
-```bash
-/app/nroctl stop remote
-```
-
-or deploy with:
-
-```
-REMOTE_ENABLED=0
-```
-
-The Java game and its persistent RMS state keep running.
-
-## Blitz Cloud
-
-For background-worker mode, leave `REMOTE_ENABLED=1` and `TUNNEL_ENABLED=1` when you need browser access.
-
-Check logs or:
+Useful commands:
 
 ```bash
 /app/nroctl status
+/app/nroctl log game
+/app/nroctl log web
+/app/nroctl restart game
 ```
 
-for:
-
-```
-remote   : https://....trycloudflare.com
-vnc pass : ...
-```
-
-Open the URL and use the VNC password shown by `nroctl status`.
-
-After finishing interaction, `/app/nroctl stop remote` removes the unnecessary remote-access processes while leaving the game online.
+VNC/upload password is persisted in `/data/vnc-password.txt`, or can be supplied with `VNC_PASSWORD`.

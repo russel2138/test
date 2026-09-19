@@ -15,25 +15,25 @@ shutdown() {
 trap cleanup EXIT
 trap shutdown INT TERM
 
+WEB_PORT="${PORT:-${NOVNC_PORT:-8080}}"
+
 echo "============================================================"
 echo " NRO lightweight runtime"
 echo " game state : /data/microemu-home/.microemulator"
-echo " game jar   : /data/game.jar"
+if [[ -s /data/game.jar ]]; then
+  echo " game jar   : /data/game.jar (persistent, present)"
+else
+  echo " game jar   : MISSING - upload at app URL"
+fi
+echo " web port   : $WEB_PORT"
+echo " web url    : https://nro.pyoska.blitz.cloud"
 echo " control    : /app/nroctl"
 echo "============================================================"
 
 /app/nroctl start display
 /app/nroctl start game
-
-if [[ "${REMOTE_ENABLED:-1}" == "1" ]]; then
-  /app/nroctl start vnc
-  /app/nroctl start web
-  if [[ "${TUNNEL_ENABLED:-1}" == "1" ]]; then
-    /app/nroctl start tunnel
-  fi
-else
-  echo "[remote] disabled; set REMOTE_ENABLED=1 or run: /app/nroctl start remote"
-fi
+/app/nroctl start vnc
+/app/nroctl start web
 
 /app/nroctl status
 

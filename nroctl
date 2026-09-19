@@ -5,7 +5,7 @@ RUNDIR=/run/nro
 LOGDIR=/tmp
 mkdir -p "$RUNDIR"
 
-components=(display game vnc web tunnel)
+components=(display game vnc web)
 
 valid_component() {
   local wanted="$1"
@@ -31,13 +31,16 @@ start_one() {
   fi
   rm -f "$RUNDIR/$c.pid" "$RUNDIR/$c.supervisor.pid"
   nohup /app/supervise.sh "$c" "/app/run-$c.sh" >> "$LOGDIR/nro-$c.log" 2>&1 &
-  sleep 0.15
-  if alive_pidfile "$RUNDIR/$c.supervisor.pid"; then
-    echo "[$c] ON"
-  else
-    echo "[$c] failed to start; see $LOGDIR/nro-$c.log" >&2
-    return 1
-  fi
+  for _ in {1..20}; do
+    if alive_pidfile "$RUNDIR/$c.supervisor.pid"; then
+      echo "[$c] ON"
+      return 0
+    fi
+    sleep 0.1
+  done
+  echo "[$c] failed to start; see $LOGDIR/nro-$c.log" >&2
+  tail -n 40 "$LOGDIR/nro-$c.log" 2>/dev/null || true
+  return 1
 }
 
 stop_one() {
@@ -48,7 +51,6 @@ stop_one() {
   sleep 0.15
   [[ -n "$child" ]] && kill "$child" 2>/dev/null || true
   rm -f "$RUNDIR/$c.pid" "$RUNDIR/$c.supervisor.pid"
-  [[ "$c" == "tunnel" ]] && rm -f /data/tunnel-url.txt
   echo "[$c] OFF"
 }
 
@@ -76,11 +78,7 @@ status_all() {
   echo
   [[ -s /data/game.jar ]] && echo "game.jar : OK ($(stat -c%s /data/game.jar 2>/dev/null || echo '?') bytes)" || echo "game.jar : MISSING"
   [[ -d /data/microemu-home/.microemulator ]] && echo "state    : OK /data/microemu-home/.microemulator" || echo "state    : not created yet"
-  if alive_pidfile "$RUNDIR/tunnel.pid" && [[ -s /data/tunnel-url.txt ]]; then
-    echo "remote   : $(cat /data/tunnel-url.txt)"
-  else
-    echo "remote   : OFF"
-  fi
+  echo "web      : https://nro.pyoska.blitz.cloud"
   if [[ -s /data/vnc-password.txt ]]; then
     echo "vnc pass : $(head -n1 /data/vnc-password.txt)"
   fi
@@ -90,13 +88,13 @@ usage() {
   cat <<'EOF'
 Usage:
   nroctl status
-  nroctl start  <display|game|vnc|web|tunnel|all|remote>
-  nroctl stop   <display|game|vnc|web|tunnel|all|remote>
-  nroctl restart <display|game|vnc|web|tunnel|all|remote>
-  nroctl log    <display|game|vnc|web|tunnel>
+  nroctl start   <display|game|vnc|web|all|remote>
+  nroctl stop    <display|game|vnc|web|all|remote>
+  nroctl restart <display|game|vnc|web|all|remote>
+  nroctl log     <display|game|vnc|web>
 
-remote = vnc + web + tunnel
-Each component has its own supervisor. Stopping VNC/web/tunnel never stops the game.
+remote = vnc + web
+The game itself only requires display + game.
 EOF
 }
 
@@ -106,7 +104,7 @@ target="${2:-all}"
 expand_targets() {
   case "$1" in
     all) printf '%s\n' "${components[@]}" ;;
-    remote) printf '%s\n' vnc web tunnel ;;
+    remote) printf '%s\n' vnc web ;;
     *) valid_component "$1" && printf '%s\n' "$1" || return 1 ;;
   esac
 }
