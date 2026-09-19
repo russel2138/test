@@ -18,16 +18,30 @@ else
 fi
 
 printf '\n============================================================\n'
-printf ' NRO service starting on port %s\n' "${PORT:-8080}"
+printf ' NRO background service starting\n'
+printf ' Local UI port: %s\n' "${PORT:-8080}"
 printf ' Xpra / first-upload password: %s\n' "$XPRA_PASSWORD"
-printf ' Password is also stored in /data/xpra-password\n'
+printf ' Watch Logs for: NRO_REMOTE_URL=https://...trycloudflare.com\n'
 printf '============================================================\n\n'
 
+# Start an outbound Cloudflare Quick Tunnel first. It points at localhost:8080.
+# Initially that port is the one-time uploader; after the JAR is uploaded the
+# uploader exits and Xpra takes over the same port, so the same tunnel keeps
+# working without needing a Blitz public address.
+ /app/run-tunnel.sh &
+TUNNEL_SUPERVISOR_PID=$!
+
+cleanup() {
+  kill "$TUNNEL_SUPERVISOR_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
 # The game binary is deliberately NOT stored in the public GitHub repository.
-# On first deploy, expose a tiny password-protected upload form. The uploaded
-# JAR is persisted at /data/game.jar, then this process hands the same port to Xpra.
+# On first deploy, expose a tiny password-protected upload form through the
+# trycloudflare URL. The uploaded JAR is persisted at /data/game.jar.
 if [[ ! -s /data/game.jar ]]; then
-  echo "[nro] /data/game.jar not found; starting one-time browser uploader..."
+  echo "[nro] /data/game.jar not found."
+  echo "[nro] Wait for NRO_REMOTE_URL in Logs, open it, then upload the JAR."
   export UPLOAD_PASSWORD="$XPRA_PASSWORD"
   python3 /app/upload.py
 fi
@@ -37,8 +51,11 @@ if [[ ! -s /data/game.jar ]]; then
   exit 1
 fi
 
-exec xpra start :100 \
-  --bind-tcp="0.0.0.0:${PORT:-8080},auth=env" \
+echo "[nro] game JAR present; starting Xpra HTML5 on localhost:${PORT:-8080}"
+
+# Bind only to loopback. The public path is cloudflared -> localhost -> Xpra.
+xpra start :100 \
+  --bind-tcp="127.0.0.1:${PORT:-8080},auth=env" \
   --html=on \
   --daemon=no \
   --dbus=no \
