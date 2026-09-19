@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p /data "$HOME/.xpra"
+mkdir -p /data "$HOME/.xpra" /data/microemu-home/.microemulator
 
 # Xpra warns/fails in some container environments when XDG_RUNTIME_DIR is
 # missing. Use a private writable runtime directory for uid 1000.
@@ -27,6 +27,7 @@ printf '\n============================================================\n'
 printf ' NRO background service starting\n'
 printf ' Local UI port: %s\n' "${PORT:-8080}"
 printf ' Xpra / first-upload password: %s\n' "$XPRA_PASSWORD"
+printf ' Persistent game state: /data/microemu-home/.microemulator\n'
 printf ' Watch Logs for: NRO_REMOTE_URL=https://...trycloudflare.com\n'
 printf '============================================================\n\n'
 
@@ -34,16 +35,18 @@ printf '============================================================\n\n'
 echo "[diag] XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
 echo "[diag] xpra binary: $(command -v xpra || true)"
 xpra --version 2>&1 | sed 's/^/[diag] /' || true
-dpkg-query -W -f='[diag] ${Package} ${Version}\n' xpra xpra-x11 2>&1 || true
+dpkg-query -W -f='[diag] ${Package} ${Version}\n' xpra xpra-x11 xpra-html5 2>&1 || true
 echo "[diag] Xvfb binary: $(command -v Xvfb || true)"
 
 /app/run-tunnel.sh &
 TUNNEL_SUPERVISOR_PID=$!
 
 cleanup() {
+  xpra stop :100 >/dev/null 2>&1 || true
   kill "$TUNNEL_SUPERVISOR_PID" 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 
 if [[ ! -s /data/game.jar ]]; then
   echo "[nro] /data/game.jar not found."
@@ -77,7 +80,7 @@ while true; do
     --clipboard=no \
     --exit-with-children=no \
     --session-name=NRO \
-    --start-child=/app/run-game.sh
+    --start=/app/run-game.sh
   then
     rc=0
   else
