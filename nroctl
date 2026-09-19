@@ -48,6 +48,7 @@ stop_one() {
   sleep 0.15
   [[ -n "$child" ]] && kill "$child" 2>/dev/null || true
   rm -f "$RUNDIR/$c.pid" "$RUNDIR/$c.supervisor.pid"
+  [[ "$c" == "tunnel" ]] && rm -f /data/tunnel-url.txt
   echo "[$c] OFF"
 }
 
@@ -58,7 +59,7 @@ status_one() {
   fi
   if alive_pidfile "$RUNDIR/$c.pid"; then
     child="$(cat "$RUNDIR/$c.pid")"
-    proc="$(ps -p "$child" -o comm= 2>/dev/null | tr -d ' ' || true)"
+    proc="$(cat "/proc/$child/comm" 2>/dev/null | tr -d '\n' || true)"
   fi
   if [[ "$sup" != "-" && "$child" != "-" ]]; then
     state="ON"
@@ -75,10 +76,10 @@ status_all() {
   echo
   [[ -s /data/game.jar ]] && echo "game.jar : OK ($(stat -c%s /data/game.jar 2>/dev/null || echo '?') bytes)" || echo "game.jar : MISSING"
   [[ -d /data/microemu-home/.microemulator ]] && echo "state    : OK /data/microemu-home/.microemulator" || echo "state    : not created yet"
-  if [[ -s /data/tunnel-url.txt ]]; then
+  if alive_pidfile "$RUNDIR/tunnel.pid" && [[ -s /data/tunnel-url.txt ]]; then
     echo "remote   : $(cat /data/tunnel-url.txt)"
   else
-    echo "remote   : no tunnel URL"
+    echo "remote   : OFF"
   fi
   if [[ -s /data/vnc-password.txt ]]; then
     echo "vnc pass : $(head -n1 /data/vnc-password.txt)"
