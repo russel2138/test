@@ -6,23 +6,31 @@ ENV DEBIAN_FRONTEND=noninteractive \
     GAME_WIDTH=320 \
     GAME_HEIGHT=240 \
     GAME_SCALE=2 \
-    JAVA_XMX=128m
+    JAVA_XMX=128m \
+    JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
-# Base tools + Java + X11 dependencies. Python is used only for the one-time
-# browser upload page on the first deploy.
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+# Base tools + a full Java 17 desktop runtime. FreeJ2ME uses AWT/X11, so we
+# intentionally install the non-headless JDK plus the common X11 runtime libs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates wget git ant openssl python3 \
       openjdk-17-jdk xvfb xauth \
-      fonts-dejavu-core \
+      fonts-dejavu-core fontconfig \
+      libxext6 libxrender1 libxtst6 libxi6 libxrandr2 libfreetype6 libgtk-3-0 \
+    && test -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java \
+    && /usr/lib/jvm/java-17-openjdk-amd64/bin/java -version \
     && rm -rf /var/lib/apt/lists/*
 
 # Xpra packages for Ubuntu 24.04.
-# xpra-x11 is required for seamless X11 application mode.
+# xpra-x11 is required for seamless X11 mode and xpra-html5 provides the
+# built-in browser client under /usr/share/xpra/www.
 RUN wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc \
     && wget -qO /etc/apt/sources.list.d/xpra.sources \
        https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/noble/xpra.sources \
     && apt-get update \
-    && apt-get install -y --no-install-recommends xpra xpra-x11 \
+    && apt-get install -y --no-install-recommends xpra xpra-x11 xpra-html5 \
+    && test -d /usr/share/xpra/www \
     && rm -rf /var/lib/apt/lists/*
 
 # cloudflared provides an outbound Quick Tunnel so the app can run in Blitz
@@ -59,12 +67,8 @@ RUN chmod +x /app/run-game.sh /app/run-tunnel.sh /app/start.sh /app/upload.py
 USER 1000:1000
 WORKDIR /data
 
-# FreeJ2ME save/config, the uploaded game JAR, Xpra password and latest tunnel
-# URL live here. Blitz should keep this volume across restarts.
 VOLUME ["/data"]
 
-# Used for local testing. In Blitz background mode the port is not exposed by
-# Blitz; cloudflared reaches it through 127.0.0.1 from inside the container.
 EXPOSE 8080
 
 CMD ["/app/start.sh"]
