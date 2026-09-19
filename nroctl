@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+RUNDIR=/run/nro
+LOGDIR=/tmp
+mkdir -p "$RUNDIR"
+
+components=(display game vnc web tunnel)
+
+valid_component() {
+  local wanted="$1"
+  local c
+  for c in "${components[@]}"; do
+    [[ "$c" == "$wanted" ]] && return 0
+  done
+  return 1
+}
+
+alive_pidfile() {
+  local file="$1" pid
+  [[ -s "$file" ]] || return 1
+  pid="$(cat "$file" 2>/dev/null || true)"
+  [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+start_one() {
+  local c="$1"
+  if alive_pidfile "$RUNDIR/$c.supervisor.pid"; then
+    echo "[$c] already ON"
+    return 0
+  fi
+  rm -f "$RUNDIR/$c.pid" "$RUNDIR/$c.supervisor.pid"
+  nohup /app/supervise.sh "$c" "/app/run-$c.sh" >> "$LOGDIR/nro-$c.log" 2>&1 &
+  sleep 0.15
+  if alive_pidfile "$RUNDIR/$c.supervisor.pid"; then
+    echo "[$c] ON"
+  else
+    echo "[$c] failed to start; see $LOGDIR/nro-$c.log" >&2
+    return 1
+  fi
+}
+
+stop_one() {
+  local c="$1" sup="" child=""
+  [[ -s "$RUNDIR/$c.supervisor.pid" ]] && sup="$(cat "$RUNDIR/$c.supervisor.pid" 2>/dev/null || true)"
+  [[ -s "$RUNDIR/$c.pid" ]] && child="$(cat "$RUNDIR/$c.pid" 2>/dev/null || true)"
+  [[ -n "$sup" ]] && kill "$sup" 2>/dev/null || true
+  sleep 0.15
+  [[ -n "$child" ]] && kill "$child" 2>/dev/null || true
+  rm -f "$RUNDIR/$c.pid" "$RUNDIR/$c.supervisor.pid"
+  echo "[$c] OFF"
+}
+
+status_one() {
+  local c="$1" sup="-" child="-" state="OFF" proc="-"
+  if alive_pidfile "$RUNDIR/$c.supervisor.pid"; then
+    sup="$(cat "$RUNDIR/$c.supervisor.pid")"
+  fi
+  if alive_pidfile "$RUNDIR/$c.pid"; then
+    child="$(cat "$RUNDIR/$c.pid")"
+    proc="$(ps -p "$child" -o comm= 2>/dev/null | tr -d ' ' || true)"
+  fi
+  if [[ "$sup" != "-" && "$child" != "-" ]]; then
+    state="ON"
+  fi
+  printf '%-8s %-3s supervisor=%-6s pid=%-6s process=%s\n' "$c" "$state" "$sup" "$child" "${proc:--}"
+}
+
+status_all() {
+  local c
+  echo "=== NRO STATUS ==="
+  for c in "${components[@]}"; do
+    status_one "$c"
+  done
+  echo
+  [[ -s /data/game.jar ]] && echo "game.jar : OK ($(stat -c%s /data/game.jar 2>/dev/null || echo '?') bytes)" || echo "game.jar : MISSING"
+  [[ -d /data/microemu-home/.microemulator ]] && echo "state    : OK /data/microemu-home/.microemulator" || echo "state    : not created yet"
+  if [[ -s /data/tunnel-url.txt ]]; then
+    echo "remote   : $(cat /data/tunnel-url.txt)"
+  else
+    echo "remote   : no tunnel URL"
+  fi
+  if [[ -s /data/vnc-password.txt ]]; then
+    echo "vnc pass : $(head -n1 /data/vnc-password.txt)"
+  fi
+}
+
+usage() {
+  cat <<'EOF'
+Usage:
+  nroctl status
+  nroctl start  <display|game|vnc|web|tunnel|all|remote>
+  nroctl stop   <display|game|vnc|web|tunnel|all|remote>
+  nroctl restart <display|game|vnc|web|tunnel|all|remote>
+  nroctl log    <display|game|vnc|web|tunnel>
+
+remote = vnc + web + tunnel
+Each component has its own supervisor. Stopping VNC/web/tunnel never stops the game.
+EOF
+}
+
+action="${1:-status}"
+target="${2:-all}"
+
+expand_targets() {
+  case "$1" in
+    all) printf '%s\n' "${components[@]}" ;;
+    remote) printf '%s\n' vnc web tunnel ;;
+    *) valid_component "$1" && printf '%s\n' "$1" || return 1 ;;
+  esac
+}
+
+case "$action" in
+  status)
+    if [[ "${2:-}" != "" && "${2:-}" != "all" ]]; then
+      valid_component "$2" || { usage; exit 2; }
+      status_one "$2"
+    else
+      status_all
+    fi
+    ;;
+  start|stop|restart)
+    mapfile -t targets < <(expand_targets "$target") || { usage; exit 2; }
+    for c in "${targets[@]}"; do
+      case "$action" in
+        start) start_one "$c" ;;
+        stop) stop_one "$c" ;;
+        restart) stop_one "$c"; start_one "$c" ;;
+      esac
+    done
+    ;;
+  log)
+    valid_component "$target" || { usage; exit 2; }
+    tail -n 120 "$LOGDIR/nro-$target.log" 2>/dev/null || true
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
