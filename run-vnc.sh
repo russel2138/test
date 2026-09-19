@@ -10,8 +10,8 @@ if [[ -n "${VNC_PASSWORD:-}" ]]; then
 fi
 
 if [[ ! -s "$PLAINTEXT" ]]; then
-  tr -dc 'A-Za-z0-9' </dev/urandom | head -c 12 > "$PLAINTEXT"
-  printf '\n' >> "$PLAINTEXT"
+  generated="$(cat /proc/sys/kernel/random/uuid | tr -d '-' | cut -c1-12)"
+  printf '%s\n' "$generated" > "$PLAINTEXT"
 fi
 
 if [[ ! -s "$PASSFILE" || "${VNC_PASSWORD:-}" != "" ]]; then
