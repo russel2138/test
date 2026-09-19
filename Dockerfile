@@ -16,13 +16,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# Current Xpra packages for Ubuntu 24.04, including the HTML5 client.
+# Xpra packages for Ubuntu 24.04, including the HTML5 client.
 RUN wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc \
     && wget -qO /etc/apt/sources.list.d/xpra.sources \
        https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/noble/xpra.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends xpra \
     && rm -rf /var/lib/apt/lists/*
+
+# cloudflared provides an outbound Quick Tunnel so the app can run in Blitz
+# background-worker mode (never sleeps) while Xpra remains reachable in a browser.
+RUN wget -qO /usr/local/bin/cloudflared \
+      https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+    && chmod 0755 /usr/local/bin/cloudflared \
+    && /usr/local/bin/cloudflared --version
 
 # Pin FreeJ2ME to a known commit and build the standalone AWT JAR.
 ARG FREEJ2ME_COMMIT=fae9304b85ac1c61d0117f6c8efe528612388278
@@ -43,17 +50,20 @@ RUN set -eux; \
     chown -R 1000:1000 /app /data /home/app
 
 COPY --chown=1000:1000 run-game.sh /app/run-game.sh
+COPY --chown=1000:1000 run-tunnel.sh /app/run-tunnel.sh
 COPY --chown=1000:1000 start.sh /app/start.sh
 COPY --chown=1000:1000 upload.py /app/upload.py
-RUN chmod +x /app/run-game.sh /app/start.sh /app/upload.py
+RUN chmod +x /app/run-game.sh /app/run-tunnel.sh /app/start.sh /app/upload.py
 
 USER 1000:1000
 WORKDIR /data
 
-# FreeJ2ME save/config, the uploaded game JAR and Xpra password live here.
+# FreeJ2ME save/config, the uploaded game JAR, Xpra password and latest tunnel
+# URL live here. Blitz should keep this volume across restarts.
 VOLUME ["/data"]
 
-# Blitz detects this HTTP port and puts HTTPS in front of it.
+# Used for local testing. In Blitz background mode the port is not exposed by
+# Blitz; cloudflared reaches it through 127.0.0.1 from inside the container.
 EXPOSE 8080
 
 CMD ["/app/start.sh"]
