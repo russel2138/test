@@ -15,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates wget unzip \
       openjdk-17-jre \
-      xvfb x11vnc websockify \
+      xvfb x11vnc python3-minimal \
       fonts-dejavu-core fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
@@ -35,6 +35,15 @@ RUN wget -qO /tmp/novnc.tar.gz \
     && mv /opt/noVNC-1.7.0 /usr/share/novnc \
     && rm -rf /usr/share/novnc/docs /usr/share/novnc/tests /usr/share/novnc/.github \
     && rm -f /tmp/novnc.tar.gz
+
+# Basic websockify only needs Python's standard library. Run upstream source
+# directly so the image does not pull NumPy/JWT/Redis dependencies.
+RUN wget -qO /tmp/websockify.tar.gz \
+      https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz \
+    && tar -xzf /tmp/websockify.tar.gz -C /opt \
+    && mv /opt/websockify-0.13.0 /opt/websockify \
+    && rm -rf /opt/websockify/tests /opt/websockify/.github \
+    && rm -f /tmp/websockify.tar.gz
 
 # Optional remote access for background-only hosts such as Blitz.
 RUN wget -qO /usr/local/bin/cloudflared \
