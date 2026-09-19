@@ -15,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates wget unzip \
       openjdk-17-jre \
-      xvfb x11vnc novnc websockify \
+      xvfb x11vnc websockify \
       fonts-dejavu-core fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
@@ -26,6 +26,15 @@ RUN wget -O /tmp/microemulator.zip \
     && mkdir -p /app \
     && mv /opt/microemulator-2.0.4 /app/microemu \
     && rm -f /tmp/microemulator.zip
+
+# noVNC is static HTML/JS. Install the upstream release directly instead of
+# Debian's novnc package, which pulls Node.js/NumPy that are unnecessary here.
+RUN wget -qO /tmp/novnc.tar.gz \
+      https://github.com/novnc/noVNC/archive/refs/tags/v1.7.0.tar.gz \
+    && tar -xzf /tmp/novnc.tar.gz -C /opt \
+    && mv /opt/noVNC-1.7.0 /usr/share/novnc \
+    && rm -rf /usr/share/novnc/docs /usr/share/novnc/tests /usr/share/novnc/.github \
+    && rm -f /tmp/novnc.tar.gz
 
 # Optional remote access for background-only hosts such as Blitz.
 RUN wget -qO /usr/local/bin/cloudflared \
