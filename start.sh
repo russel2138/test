@@ -6,7 +6,14 @@ mkdir -p /data /run/nro /data/microemu-home/.microemulator
 cleanup() {
   /app/nroctl stop all >/dev/null 2>&1 || true
 }
-trap cleanup EXIT INT TERM
+
+shutdown() {
+  cleanup
+  exit 0
+}
+
+trap cleanup EXIT
+trap shutdown INT TERM
 
 echo "============================================================"
 echo " NRO lightweight runtime"
@@ -30,7 +37,6 @@ fi
 
 /app/nroctl status
 
-# PID 1 only keeps the container alive. It does not own component lifecycles.
 while true; do
   sleep 3600 &
   wait $!
