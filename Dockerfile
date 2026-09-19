@@ -16,12 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
-# Xpra packages for Ubuntu 24.04, including the HTML5 client.
+# Xpra packages for Ubuntu 24.04.
+# xpra-x11 is required for seamless X11 application mode.
 RUN wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc \
     && wget -qO /etc/apt/sources.list.d/xpra.sources \
        https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/noble/xpra.sources \
     && apt-get update \
-    && apt-get install -y --no-install-recommends xpra \
+    && apt-get install -y --no-install-recommends xpra xpra-x11 \
     && rm -rf /var/lib/apt/lists/*
 
 # cloudflared provides an outbound Quick Tunnel so the app can run in Blitz
