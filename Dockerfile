@@ -1,30 +1,33 @@
+FROM maven:3.9-eclipse-temurin-17 AS microemu-build
+
+ARG MICROEMU_COMMIT=31efc58943c355d30b5d89574b9cc1adb76ae747
+RUN git clone https://github.com/lolo-san/microemu-minimal.git /src/microemu \
+    && cd /src/microemu \
+    && git checkout "$MICROEMU_COMMIT" \
+    && mvn clean install -Dmaven.test.skip=true \
+    && test -f /src/microemu/microemulator/target/microemulator-3.0.0-SNAPSHOT-jar-with-dependencies.jar
+
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     HOME=/home/app \
     PORT=8080 \
-    GAME_WIDTH=320 \
-    GAME_HEIGHT=240 \
-    GAME_SCALE=2 \
-    JAVA_XMX=128m \
+    JAVA_XMX=160m \
     JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
-# Base tools + a full Java 17 desktop runtime. FreeJ2ME uses AWT/X11, so we
-# intentionally install the non-headless JDK plus the common X11 runtime libs.
+# Runtime: Java desktop/AWT + X11 libs required by MicroEmulator Swing UI.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates wget git ant openssl python3 \
-      openjdk-17-jdk xvfb xauth \
+      ca-certificates wget openssl python3 \
+      openjdk-17-jre xvfb xauth \
       fonts-dejavu-core fontconfig \
       libxext6 libxrender1 libxtst6 libxi6 libxrandr2 libfreetype6 libgtk-3-0 \
     && test -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java \
     && /usr/lib/jvm/java-17-openjdk-amd64/bin/java -version \
     && rm -rf /var/lib/apt/lists/*
 
-# Xpra packages for Ubuntu 24.04.
-# xpra-x11 is required for seamless X11 mode and xpra-html5 provides the
-# built-in browser client under /usr/share/xpra/www.
+# Xpra + browser client.
 RUN wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc \
     && wget -qO /etc/apt/sources.list.d/xpra.sources \
        https://raw.githubusercontent.com/Xpra-org/xpra/master/packaging/repos/noble/xpra.sources \
@@ -33,25 +36,17 @@ RUN wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc \
     && test -d /usr/share/xpra/www \
     && rm -rf /var/lib/apt/lists/*
 
-# cloudflared provides an outbound Quick Tunnel so the app can run in Blitz
-# background-worker mode (never sleeps) while Xpra remains reachable in a browser.
+# Cloudflare Quick Tunnel for Blitz background-worker mode.
 RUN wget -qO /usr/local/bin/cloudflared \
       https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
     && chmod 0755 /usr/local/bin/cloudflared \
     && /usr/local/bin/cloudflared --version
 
-# Pin FreeJ2ME to a known commit and build the standalone AWT JAR.
-ARG FREEJ2ME_COMMIT=fae9304b85ac1c61d0117f6c8efe528612388278
-RUN git clone https://github.com/hex007/freej2me.git /tmp/freej2me \
-    && cd /tmp/freej2me \
-    && git checkout "$FREEJ2ME_COMMIT" \
-    && ant \
-    && mkdir -p /app \
-    && cp build/freej2me.jar /app/freej2me.jar \
-    && rm -rf /tmp/freej2me
+COPY --from=microemu-build \
+  /src/microemu/microemulator/target/microemulator-3.0.0-SNAPSHOT-jar-with-dependencies.jar \
+  /app/microemulator.jar
 
-# Ubuntu 24.04 may already have uid/gid 1000 (usually the ubuntu account).
-# Reuse that numeric uid/gid when present instead of failing on groupadd/useradd.
+# Ubuntu 24.04 may already have uid/gid 1000. Reuse them when present.
 RUN set -eux; \
     if ! getent group 1000 >/dev/null; then groupadd -g 1000 app; fi; \
     if ! getent passwd 1000 >/dev/null; then useradd -m -u 1000 -g 1000 -s /bin/bash app; fi; \
@@ -68,7 +63,6 @@ USER 1000:1000
 WORKDIR /data
 
 VOLUME ["/data"]
-
 EXPOSE 8080
 
 CMD ["/app/start.sh"]
