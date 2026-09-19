@@ -15,7 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates wget unzip \
       openjdk-17-jre \
-      xvfb x11vnc python3-minimal \
+      xvfb x11vnc websockify \
       fonts-dejavu-core fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
@@ -36,14 +36,7 @@ RUN wget -qO /tmp/novnc.tar.gz \
     && rm -rf /usr/share/novnc/docs /usr/share/novnc/tests /usr/share/novnc/.github \
     && rm -f /tmp/novnc.tar.gz
 
-# Basic websockify only needs Python's standard library. Run upstream source
-# directly so the image does not pull NumPy/JWT/Redis dependencies.
-RUN wget -qO /tmp/websockify.tar.gz \
-      https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz \
-    && tar -xzf /tmp/websockify.tar.gz -C /opt \
-    && mv /opt/websockify-0.13.0 /opt/websockify \
-    && rm -rf /opt/websockify/tests /opt/websockify/.github \
-    && rm -f /tmp/websockify.tar.gz
+RUN ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
 
 # Optional remote access for background-only hosts such as Blitz.
 RUN wget -qO /usr/local/bin/cloudflared \
@@ -61,6 +54,7 @@ COPY --chown=1000:1000 run-display.sh /app/run-display.sh
 COPY --chown=1000:1000 run-game.sh /app/run-game.sh
 COPY --chown=1000:1000 run-vnc.sh /app/run-vnc.sh
 COPY --chown=1000:1000 run-web.sh /app/run-web.sh
+COPY --chown=1000:1000 upload.py /app/upload.py
 COPY --chown=1000:1000 run-tunnel.sh /app/run-tunnel.sh
 COPY --chown=1000:1000 nroctl /app/nroctl
 COPY --chown=1000:1000 start.sh /app/start.sh
