@@ -30,6 +30,13 @@ printf ' Xpra / first-upload password: %s\n' "$XPRA_PASSWORD"
 printf ' Watch Logs for: NRO_REMOTE_URL=https://...trycloudflare.com\n'
 printf '============================================================\n\n'
 
+# Runtime diagnostics so Blitz logs show exactly what Xpra packages are present.
+echo "[diag] XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+echo "[diag] xpra binary: $(command -v xpra || true)"
+xpra --version 2>&1 | sed 's/^/[diag] /' || true
+dpkg-query -W -f='[diag] ${Package} ${Version}\n' xpra xpra-x11 2>&1 || true
+echo "[diag] Xvfb binary: $(command -v Xvfb || true)"
+
 /app/run-tunnel.sh &
 TUNNEL_SUPERVISOR_PID=$!
 
@@ -52,18 +59,31 @@ fi
 
 echo "[nro] game JAR present; starting Xpra HTML5 on localhost:${PORT:-8080}"
 
-xpra start :100 \
-  --bind-tcp="127.0.0.1:${PORT:-8080},auth=env" \
-  --html=on \
-  --daemon=no \
-  --dbus=no \
-  --mdns=no \
-  --pulseaudio=no \
-  --notifications=no \
-  --printing=no \
-  --webcam=no \
-  --file-transfer=no \
-  --clipboard=no \
-  --exit-with-children=no \
-  --session-name=NRO \
-  --start-child=/app/run-game.sh
+# Keep the container alive even if Xpra itself fails. This prevents Blitz from
+# immediately rolling back the whole background worker and also leaves the
+# Cloudflare tunnel supervisor running while we capture the real Xpra error.
+while true; do
+  if xpra start :100 \
+    --bind-tcp="127.0.0.1:${PORT:-8080},auth=env" \
+    --html=on \
+    --daemon=no \
+    --dbus=no \
+    --mdns=no \
+    --pulseaudio=no \
+    --notifications=no \
+    --printing=no \
+    --webcam=no \
+    --file-transfer=no \
+    --clipboard=no \
+    --exit-with-children=no \
+    --session-name=NRO \
+    --start-child=/app/run-game.sh
+  then
+    rc=0
+  else
+    rc=$?
+  fi
+
+  echo "[xpra] exited with code $rc; retrying in 5 seconds..."
+  sleep 5
+done
