@@ -65,7 +65,7 @@ Remote-access files, when enabled:
 /data/tunnel-url.txt
 ```
 
-The old built-in JAR upload web server was removed to keep the runtime small. Upload/copy `game.jar` using the host's file upload, volume, shell, or deployment mechanism.
+If `/data/game.jar` is missing, the web component temporarily serves a one-time upload page on the same remote URL. After a valid J2ME JAR is uploaded, it is saved as `/data/game.jar`; the uploader exits and the same port switches to noVNC.
 
 ## Defaults
 
