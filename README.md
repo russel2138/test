@@ -1,79 +1,61 @@
-# NRO Dragonboy + FreeJ2ME + Xpra + Cloudflare Quick Tunnel
+# NRO Dragonboy + MicroEmulator + Xpra + Cloudflare Quick Tunnel
 
-This repository is designed for **Blitz background-worker mode**:
+This repo runs the uploaded J2ME NRO JAR with **MicroEmulator** instead of FreeJ2ME.
+
+Architecture:
 
 ```
-Blitz background worker (never sleeps)
-  -> FreeJ2ME / Dragonboy
+Blitz background worker
+  -> MicroEmulator + Dragonboy JAR
   -> Xpra HTML5 on 127.0.0.1:8080
-  -> cloudflared outbound Quick Tunnel
+  -> cloudflared Quick Tunnel
   -> https://random.trycloudflare.com
   -> browser
 ```
 
-Blitz background workers have no Blitz address/port and do not sleep. The container therefore uses an outbound Cloudflare Quick Tunnel to make Xpra reachable in a browser.
+## Emulator
 
-## Deploy on Blitz
+The image builds the modernized `lolo-san/microemu-minimal` fork at pinned commit:
 
-1. Deploy this repo normally and keep `XPRA_PASSWORD` set in Environment.
-2. After a successful build, go to **Settings -> Run it in the background -> Switch**.
-3. Open the Blitz **Logs** tab.
-4. Wait for a line like:
-
-   ```
-   NRO_REMOTE_URL=https://random-words.trycloudflare.com
-   ```
-
-5. Open that URL.
-6. First run only: the URL shows **NRO first setup**. Enter the same `XPRA_PASSWORD`, select your local `Dragonboy250 v4.0.jar`, and upload it.
-7. Wait about 10-20 seconds and refresh the **same trycloudflare URL**. Xpra HTML5 should appear.
-8. Enter `XPRA_PASSWORD` again, open the FreeJ2ME window, login/configure NRO, then close the browser whenever you want. The background worker keeps running.
-
-## Important behavior
-
-- The Blitz app itself should be switched to **background mode**. That UI setting cannot be encoded in the Dockerfile.
-- `cloudflared` is started automatically by `start.sh`.
-- The Quick Tunnel URL is printed in Logs as `NRO_REMOTE_URL=...`.
-- The latest URL is also written to `/data/tunnel-url.txt`.
-- A Quick Tunnel gets a **new random URL after a container/cloudflared restart**. Check Logs again after a restart.
-- Quick Tunnels are a Cloudflare development/testing feature, not an SLA-backed production endpoint.
-- Xpra is password-protected with `XPRA_PASSWORD`.
-- Xpra binds only to `127.0.0.1`; cloudflared is the only public path.
-
-## Persistence
-
-State is under `/data`:
-
-- `/data/game.jar`
-- `/data/xpra-password`
-- `/data/tunnel-url.txt`
-- FreeJ2ME save/config files
-
-The Dockerfile declares `VOLUME ["/data"]`. Make sure Blitz keeps this folder if its UI exposes the kept-folder setting.
-
-## Environment variables
-
-- `XPRA_PASSWORD`: recommended; used for both initial JAR upload and Xpra login.
-- `GAME_WIDTH`: default `320`.
-- `GAME_HEIGHT`: default `240`.
-- `GAME_SCALE`: default `2`.
-- `JAVA_XMX`: default `128m`.
-- `PORT`: default `8080`.
-
-## Local test
-
-```bash
-docker build --platform linux/amd64 -t nro-freej2me .
-docker run --rm --platform linux/amd64 \
-  -e XPRA_PASSWORD='replace-this' \
-  -v nro-data:/data \
-  nro-freej2me
+```
+31efc58943c355d30b5d89574b9cc1adb76ae747
 ```
 
-The container will print a `trycloudflare.com` URL. Use that URL instead of exposing a local Docker port.
+Its README supports launching a MIDlet with:
+
+```
+java -jar microemulator-3.0.0-SNAPSHOT-jar-with-dependencies.jar <midlet.jar>
+```
+
+The runtime here uses Java 17 with desktop/AWT/X11 libraries and launches `/data/game.jar`.
+
+## Blitz flow
+
+1. Keep `XPRA_PASSWORD` in Environment.
+2. Keep `/data` persistent.
+3. Switch the app to **Run it in the background**.
+4. Open Logs and find:
+
+   ```
+   NRO_REMOTE_URL=https://....trycloudflare.com
+   ```
+
+5. First run only: open the URL, upload your local NRO `.jar` with `XPRA_PASSWORD`.
+6. Refresh the same URL after upload.
+7. Xpra HTML5 should show the MicroEmulator window.
+8. Closing the browser does not stop the background worker.
+
+## Persistent data
+
+Stored under `/data`:
+
+- `game.jar`
+- Xpra password
+- latest tunnel URL
+- any emulator/game data written to the working directory
 
 ## Notes
 
-- FreeJ2ME is pinned to commit `fae9304b85ac1c61d0117f6c8efe528612388278`.
+- Quick Tunnel URL can change after restart.
+- Xpra binds only to localhost.
 - No VNC/noVNC stack is used.
-- Closing the browser does not stop FreeJ2ME or the game.
