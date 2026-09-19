@@ -1,12 +1,3 @@
-FROM maven:3.9-eclipse-temurin-17 AS microemu-build
-
-ARG MICROEMU_COMMIT=31efc58943c355d30b5d89574b9cc1adb76ae747
-RUN git clone https://github.com/lolo-san/microemu-minimal.git /src/microemu \
-    && cd /src/microemu \
-    && git checkout "$MICROEMU_COMMIT" \
-    && mvn clean install -Dmaven.test.skip=true \
-    && test -f /src/microemu/microemulator/target/microemulator-3.0.0-SNAPSHOT-jar-with-dependencies.jar
-
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -19,13 +10,24 @@ ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # Runtime: Java desktop/AWT + X11 libs required by MicroEmulator Swing UI.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates wget openssl python3 \
+      ca-certificates wget unzip openssl python3 \
       openjdk-17-jre xvfb xauth \
       fonts-dejavu-core fontconfig \
       libxext6 libxrender1 libxtst6 libxi6 libxrandr2 libfreetype6 libgtk-3-0 \
     && test -x /usr/lib/jvm/java-17-openjdk-amd64/bin/java \
     && /usr/lib/jvm/java-17-openjdk-amd64/bin/java -version \
     && rm -rf /var/lib/apt/lists/*
+
+# Use the official prebuilt MicroEmulator 2.0.4 distribution instead of
+# rebuilding a broken fork from source.
+RUN wget -O /tmp/microemulator-2.0.4.zip \
+      "https://sourceforge.net/projects/microemulator/files/microemulator/2.0.4/microemulator-2.0.4.zip/download" \
+    && test "$(stat -c%s /tmp/microemulator-2.0.4.zip)" -gt 1500000 \
+    && unzip -q /tmp/microemulator-2.0.4.zip -d /opt \
+    && test -f /opt/microemulator-2.0.4/microemulator.jar \
+    && mkdir -p /app \
+    && mv /opt/microemulator-2.0.4 /app/microemu \
+    && rm -f /tmp/microemulator-2.0.4.zip
 
 # Xpra + browser client.
 RUN wget -qO /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc \
@@ -41,10 +43,6 @@ RUN wget -qO /usr/local/bin/cloudflared \
       https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
     && chmod 0755 /usr/local/bin/cloudflared \
     && /usr/local/bin/cloudflared --version
-
-COPY --from=microemu-build \
-  /src/microemu/microemulator/target/microemulator-3.0.0-SNAPSHOT-jar-with-dependencies.jar \
-  /app/microemulator.jar
 
 # Ubuntu 24.04 may already have uid/gid 1000. Reuse them when present.
 RUN set -eux; \
