@@ -14,7 +14,14 @@ cleanup() {
   fi
   rm -f "/run/nro/${name}.pid" "/run/nro/${name}.supervisor.pid"
 }
-trap cleanup EXIT INT TERM
+
+shutdown() {
+  cleanup
+  exit 0
+}
+
+trap cleanup EXIT
+trap shutdown INT TERM
 
 while true; do
   "$@" &
