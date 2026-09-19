@@ -1,61 +1,114 @@
-# NRO Dragonboy + MicroEmulator + Xpra + Cloudflare Quick Tunnel
+# NRO + MicroEmulator lightweight runtime
 
-This repo runs the uploaded J2ME NRO JAR with **MicroEmulator** instead of FreeJ2ME.
+This image is optimized for tiny always-on container hosts such as Blitz Cloud.
 
-Architecture:
+## Runtime
 
-```
-Blitz background worker
-  -> MicroEmulator + Dragonboy JAR
-  -> Xpra HTML5 on 127.0.0.1:8080
-  -> cloudflared Quick Tunnel
-  -> https://random.trycloudflare.com
-  -> browser
-```
+The stack intentionally avoids a desktop environment and Xpra:
 
-## Emulator
+- **Xvfb**: virtual X display required by MicroEmulator/AWT.
+- **MicroEmulator 2.0.4 + Java 17**: runs `/data/game.jar`.
+- **x11vnc**: optional VNC access.
+- **noVNC/websockify**: optional browser bridge.
+- **cloudflared Quick Tunnel**: optional public URL for background-worker hosts.
 
-The image builds the modernized `lolo-san/microemu-minimal` fork at pinned commit:
+The game only needs **Xvfb**. VNC, browser access and the tunnel can all stop without stopping the game.
 
-```
-31efc58943c355d30b5d89574b9cc1adb76ae747
-```
+## Independent components
 
-Its README supports launching a MIDlet with:
+Every component has its own supervisor and PID files:
 
 ```
-java -jar microemulator-3.0.0-SNAPSHOT-jar-with-dependencies.jar <midlet.jar>
+display  -> Xvfb
+game     -> Java + MicroEmulator
+vnc      -> x11vnc
+web      -> websockify + noVNC
+tunnel   -> cloudflared
 ```
 
-The runtime here uses Java 17 with desktop/AWT/X11 libraries and launches `/data/game.jar`.
+Use:
 
-## Blitz flow
+```bash
+/app/nroctl status
+/app/nroctl start game
+/app/nroctl stop game
+/app/nroctl restart game
+/app/nroctl log game
 
-1. Keep `XPRA_PASSWORD` in Environment.
-2. Keep `/data` persistent.
-3. Switch the app to **Run it in the background**.
-4. Open Logs and find:
+/app/nroctl stop remote
+/app/nroctl start remote
+```
 
-   ```
-   NRO_REMOTE_URL=https://....trycloudflare.com
-   ```
+`remote` means only `vnc + web + tunnel`. Stopping it does **not** stop the game.
 
-5. First run only: open the URL, upload your local NRO `.jar` with `XPRA_PASSWORD`.
-6. Refresh the same URL after upload.
-7. Xpra HTML5 should show the MicroEmulator window.
-8. Closing the browser does not stop the background worker.
+## Persistent files
 
-## Persistent data
+Keep `/data` persistent.
 
-Stored under `/data`:
+Required:
 
-- `game.jar`
-- Xpra password
-- latest tunnel URL
-- any emulator/game data written to the working directory
+```
+/data/game.jar
+```
 
-## Notes
+Game/RMS state stays in:
 
-- Quick Tunnel URL can change after restart.
-- Xpra binds only to localhost.
-- No VNC/noVNC stack is used.
+```
+/data/microemu-home/.microemulator
+```
+
+Remote-access files, when enabled:
+
+```
+/data/vnc-password.txt
+/data/vnc.pass
+/data/tunnel-url.txt
+```
+
+The old built-in JAR upload web server was removed to keep the runtime small. Upload/copy `game.jar` using the host's file upload, volume, shell, or deployment mechanism.
+
+## Defaults
+
+```
+DISPLAY=:99
+JAVA_XMX=160m
+NOVNC_PORT=8080
+VNC_PORT=5900
+REMOTE_ENABLED=1
+TUNNEL_ENABLED=1
+```
+
+For the lightest steady-state after the account is already logged in:
+
+```bash
+/app/nroctl stop remote
+```
+
+or deploy with:
+
+```
+REMOTE_ENABLED=0
+```
+
+The Java game and its persistent RMS state keep running.
+
+## Blitz Cloud
+
+For background-worker mode, leave `REMOTE_ENABLED=1` and `TUNNEL_ENABLED=1` when you need browser access.
+
+Check logs or:
+
+```bash
+/app/nroctl status
+```
+
+for:
+
+```
+remote   : https://....trycloudflare.com
+vnc pass : ...
+```
+
+Open the URL and use the VNC password shown by `nroctl status`.
+
+After finishing interaction, `/app/nroctl stop remote` removes the unnecessary remote-access processes while leaving the game online.
