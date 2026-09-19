@@ -26,4 +26,4 @@ while [[ ! -S /tmp/.X11-unix/X99 ]]; do
   sleep 2
 done
 
-exec x11vnc   -display "${DISPLAY:-:99}"   -rfbport "${VNC_PORT:-5900}"   -rfbauth "$PASSFILE"   -forever   -shared   -noxdamage   -repeat   -nopw   -quiet
+exec x11vnc -display "${DISPLAY:-:99}" -rfbport "${VNC_PORT:-5900}" -rfbauth "$PASSFILE" -forever -shared -noxdamage -repeat -quiet
