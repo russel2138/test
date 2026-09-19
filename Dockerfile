@@ -34,10 +34,13 @@ RUN git clone https://github.com/hex007/freej2me.git /tmp/freej2me \
     && cp build/freej2me.jar /app/freej2me.jar \
     && rm -rf /tmp/freej2me
 
-RUN groupadd -g 1000 app \
-    && useradd -m -u 1000 -g 1000 -s /bin/bash app \
-    && mkdir -p /app /data /home/app/.xpra \
-    && chown -R 1000:1000 /app /data /home/app
+# Ubuntu 24.04 may already have uid/gid 1000 (usually the ubuntu account).
+# Reuse that numeric uid/gid when present instead of failing on groupadd/useradd.
+RUN set -eux; \
+    if ! getent group 1000 >/dev/null; then groupadd -g 1000 app; fi; \
+    if ! getent passwd 1000 >/dev/null; then useradd -m -u 1000 -g 1000 -s /bin/bash app; fi; \
+    mkdir -p /app /data /home/app/.xpra; \
+    chown -R 1000:1000 /app /data /home/app
 
 COPY --chown=1000:1000 run-game.sh /app/run-game.sh
 COPY --chown=1000:1000 start.sh /app/start.sh
