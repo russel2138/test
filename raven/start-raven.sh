@@ -82,7 +82,7 @@ watchdog_loop &
 WATCHDOG_PID=$!
 trap 'kill "$WATCHDOG_PID" 2>/dev/null || true; shutdown' INT TERM
 
-echo "[raven] Console commands: status | log | restart | vnc | help"
+echo "[raven] Console commands: status | log | game-restart | restart | vnc | help"
 
 # Raven sends panel console input to stdin of the main process. Keep this
 # script in the foreground so simple commands can be typed directly into
@@ -100,6 +100,9 @@ while true; do
     log|logs)
       "$SCRIPT_DIR/nroctl.sh" log
       ;;
+    game-restart)
+      "$SCRIPT_DIR/nroctl.sh" game-restart
+      ;;
     restart)
       echo "[raven] restarting NRO stack..."
       "$SCRIPT_DIR/nroctl.sh" restart
@@ -109,11 +112,11 @@ while true; do
       echo "VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
       ;;
     help|"")
-      echo "Commands: status | log | restart | vnc | help"
+      echo "Commands: status | log | game-restart | restart | vnc | help"
       ;;
     *)
       echo "[raven] unknown command: $cmd"
-      echo "Commands: status | log | restart | vnc | help"
+      echo "Commands: status | log | game-restart | restart | vnc | help"
       ;;
   esac
 done
