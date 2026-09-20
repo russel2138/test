@@ -28,6 +28,11 @@ HEALTH_GRACE="${HEALTH_GRACE:-120}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-30}"
 HEALTH_FAILS="${HEALTH_FAILS:-4}"
 
+# Conservative freeze detector: if Java is alive but the game log has not
+# changed for a long time, restart only the game process.
+STALL_WATCHDOG="${STALL_WATCHDOG:-1}"
+STALL_TIMEOUT="${STALL_TIMEOUT:-600}"
+
 CP="$EMU/microemulator.jar:$EMU/lib/*:$EMU/devices/*"
 
 VNC_PID="$DATA/vnc.pid"
@@ -74,10 +79,19 @@ game_connected() {
 }
 
 trim_log() {
-  local f="$1" tmp="${1}.tmp.$$"
+  local f="$1" tmp="${1}.tmp.$"
   [[ -f "$f" ]] || return 0
   tail -n 160 "$f" > "$tmp" 2>/dev/null || true
   mv -f "$tmp" "$f" 2>/dev/null || true
+}
+
+file_age_seconds() {
+  local f="$1" now mtime
+  [[ -e "$f" ]] || return 1
+  now="$(date +%s)"
+  mtime="$(stat -c %Y "$f" 2>/dev/null || true)"
+  [[ -n "$mtime" ]] || return 1
+  printf '%s\n' "$(( now - mtime ))"
 }
 
 prepare() {
@@ -178,6 +192,20 @@ game_loop() {
       sleep "$HEALTH_INTERVAL"
       kill -0 "$child" 2>/dev/null || break
 
+      # If Java is alive but the client has produced no log activity for a
+      # long time, treat it as a probable freeze and restart GAME ONLY.
+      if [[ "$STALL_WATCHDOG" == "1" ]]; then
+        log_age="$(file_age_seconds "$GAME_LOG" 2>/dev/null || true)"
+        if [[ -n "$log_age" && "$log_age" -ge "$STALL_TIMEOUT" ]]; then
+          printf '[%s] stall watchdog: no game log activity for %ss; restarting GAME ONLY (pid=%s)\n' \
+            "$(date '+%F %T')" "$log_age" "$child" >> "$SUP_LOG"
+          kill "$child" 2>/dev/null || true
+          sleep 3
+          kill -9 "$child" 2>/dev/null || true
+          break
+        fi
+      fi
+
       # IMPORTANT: do not restart a live game just because a guessed remote
       # NRO port is absent. Different client/server builds can use different
       # ports and the game itself has reconnect logic/settings. By default
@@ -217,7 +245,12 @@ start_game() {
   if [[ "$NETWORK_WATCHDOG" == "1" ]]; then
     echo "[GAME] network watchdog ENABLED on remote TCP :$NRO_SERVER_PORT"
   else
-    echo "[GAME] process-only watchdog; in-game reconnect remains in control"
+    echo "[GAME] network-port watchdog OFF; in-game reconnect remains in control"
+  fi
+  if [[ "$STALL_WATCHDOG" == "1" ]]; then
+    echo "[GAME] stall watchdog ENABLED: restart GAME ONLY after ${STALL_TIMEOUT}s without log activity"
+  else
+    echo "[GAME] stall watchdog OFF"
   fi
   if pid_alive "$SUP_PID"; then
     echo "[GAME] supervisor already ON (pid $(cat "$SUP_PID"))"
@@ -235,6 +268,25 @@ start_game() {
     tail -n 80 "$SUP_LOG" 2>/dev/null || true
     return 1
   fi
+}
+
+restart_game_only() {
+  local p cmd
+  if ! pid_alive "$GAME_PID"; then
+    echo "[GAME] no live game pid; supervisor will start it when needed"
+    return 0
+  fi
+
+  p="$(cat "$GAME_PID" 2>/dev/null || true)"
+  cmd="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)"
+  if [[ "$cmd" != *"org.microemu.app.Main"* ]]; then
+    echo "[GAME] refusing to kill pid $p because it is not MicroEmulator"
+    rm -f "$GAME_PID"
+    return 1
+  fi
+
+  echo "[GAME] restarting game only (pid $p); VNC stays up"
+  kill "$p" 2>/dev/null || true
 }
 
 stop_pidfile() {
@@ -292,6 +344,10 @@ status() {
     echo "[INFO] Game network     TCP :$NRO_SERVER_PORT not observed (not used for health)"
   fi
   [[ -s "$GAME" ]] && echo "[ON]  game.jar         $GAME" || echo "[OFF] game.jar"
+  if [[ -f "$GAME_LOG" ]]; then
+    log_age="$(file_age_seconds "$GAME_LOG" 2>/dev/null || true)"
+    [[ -n "$log_age" ]] && echo "[INFO] Game log age     ${log_age}s"
+  fi
   echo "State: $STATE"
   echo "============================================"
 }
@@ -308,6 +364,7 @@ case "${1:-}" in
   restart) stop_all; sleep 1; prepare || exit 1; start_vnc || exit 1; start_game || exit 1; sleep 1; status ;;
   status) status ;;
   log) show_log ;;
+  game-restart) restart_game_only ;;
   _game_loop) game_loop ;;
-  *) echo "Usage: $0 {start|stop|restart|status|log}"; exit 1 ;;
+  *) echo "Usage: $0 {start|stop|restart|status|log|game-restart}"; exit 1 ;;
 esac
