@@ -46,8 +46,17 @@ pid_alive() {
 }
 
 find_vnc_pid() {
-  if pid_alive "$VNC_PID"; then cat "$VNC_PID"; return 0; fi
-  return 1
+  local p cmd
+  [[ -s "$VNC_PID" ]] || return 1
+  p="$(cat "$VNC_PID" 2>/dev/null || true)"
+  [[ -n "$p" ]] || return 1
+  kill -0 "$p" 2>/dev/null || return 1
+
+  # Avoid treating a reused/stale PID as our VNC process.
+  cmd="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)"
+  [[ "$cmd" == *"Xtigervnc"* ]] || return 1
+
+  printf '%s\n' "$p"
 }
 
 find_game_pid() {
@@ -107,9 +116,15 @@ EOF
 start_vnc() {
   local p
   p="$(find_vnc_pid || true)"
-  if [[ -n "$p" ]]; then
-    echo "[VNC] already ON (pid $p)"
+  if [[ -n "$p" ]] && port_listening; then
+    echo "[VNC] already ON (pid $p, port $VNC_PORT)"
     return 0
+  fi
+
+  # Stale PID file or half-dead X server: do not skip startup.
+  if [[ -s "$VNC_PID" ]]; then
+    echo "[VNC] stale/dead pidfile detected; starting a fresh X/VNC server"
+    rm -f "$VNC_PID"
   fi
 
   : > "$VNC_LOG"
@@ -208,9 +223,25 @@ start_game() {
 }
 
 stop_pidfile() {
-  local f="$1" p i
+  local f="$1" p i cmd=""
   if pid_alive "$f"; then
     p="$(cat "$f")"
+
+    # A stale pidfile can point at an unrelated process after a container
+    # restart. Only signal known NRO-owned processes.
+    cmd="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)"
+    case "$f" in
+      "$VNC_PID")
+        [[ "$cmd" == *"Xtigervnc"* ]] || { rm -f "$f"; return 0; }
+        ;;
+      "$SUP_PID")
+        [[ "$cmd" == *"nroctl.sh"*"_game_loop"* || "$cmd" == *"/raven/nroctl.sh"*"_game_loop"* ]] || { rm -f "$f"; return 0; }
+        ;;
+      "$GAME_PID")
+        [[ "$cmd" == *"org.microemu.app.Main"* ]] || { rm -f "$f"; return 0; }
+        ;;
+    esac
+
     kill "$p" 2>/dev/null || true
     for i in 1 2 3 4 5; do
       kill -0 "$p" 2>/dev/null || break
