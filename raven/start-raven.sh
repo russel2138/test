@@ -80,9 +80,20 @@ watchdog_loop() {
 
 watchdog_loop &
 WATCHDOG_PID=$!
-trap 'kill "$WATCHDOG_PID" 2>/dev/null || true; shutdown' INT TERM
+LIVE_LOG_PID=""
 
-echo "[raven] Console commands: status | log | loop-check | game-restart | restart | vnc | help"
+stop_live_log() {
+  if [[ -n "${LIVE_LOG_PID:-}" ]] && kill -0 "$LIVE_LOG_PID" 2>/dev/null; then
+    kill "$LIVE_LOG_PID" 2>/dev/null || true
+    wait "$LIVE_LOG_PID" 2>/dev/null || true
+    echo "[LOG] live follow stopped"
+  fi
+  LIVE_LOG_PID=""
+}
+
+trap 'stop_live_log; kill "$WATCHDOG_PID" 2>/dev/null || true; shutdown' INT TERM
+
+echo "[raven] Console commands: status | log | log-stop | loop-check | game-restart | restart | vnc | help"
 
 # Raven sends panel console input to stdin of the main process. Keep this
 # script in the foreground so simple commands can be typed directly into
@@ -98,7 +109,16 @@ while true; do
       "$SCRIPT_DIR/nroctl.sh" status
       ;;
     log|logs)
-      "$SCRIPT_DIR/nroctl.sh" log
+      if [[ -n "${LIVE_LOG_PID:-}" ]] && kill -0 "$LIVE_LOG_PID" 2>/dev/null; then
+        echo "[LOG] live follow already running (pid $LIVE_LOG_PID)"
+      else
+        "$SCRIPT_DIR/nroctl.sh" log-follow &
+        LIVE_LOG_PID=$!
+        echo "[LOG] live follow ON (pid $LIVE_LOG_PID). Type: log-stop"
+      fi
+      ;;
+    log-stop)
+      stop_live_log
       ;;
     loop-check)
       "$SCRIPT_DIR/nroctl.sh" loop-check
@@ -115,11 +135,11 @@ while true; do
       echo "VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
       ;;
     help|"")
-      echo "Commands: status | log | loop-check | game-restart | restart | vnc | help"
+      echo "Commands: status | log | log-stop | loop-check | game-restart | restart | vnc | help"
       ;;
     *)
       echo "[raven] unknown command: $cmd"
-      echo "Commands: status | log | loop-check | game-restart | restart | vnc | help"
+      echo "Commands: status | log | log-stop | loop-check | game-restart | restart | vnc | help"
       ;;
   esac
 done
