@@ -33,6 +33,12 @@ HEALTH_FAILS="${HEALTH_FAILS:-4}"
 STALL_WATCHDOG="${STALL_WATCHDOG:-1}"
 STALL_TIMEOUT="${STALL_TIMEOUT:-600}"
 
+# Detect the specific NRO render/update loop (nro.cr.run). The JVM/AWT can
+# remain alive after that thread dies, leaving a blank MicroEmulator window.
+LOOP_WATCHDOG="${LOOP_WATCHDOG:-1}"
+LOOP_CHECK_INTERVAL="${LOOP_CHECK_INTERVAL:-60}"
+LOOP_FAILS="${LOOP_FAILS:-2}"
+
 CP="$EMU/microemulator.jar:$EMU/lib/*:$EMU/devices/*"
 
 VNC_PID="$DATA/vnc.pid"
@@ -92,6 +98,23 @@ file_age_seconds() {
   mtime="$(stat -c %Y "$f" 2>/dev/null || true)"
   [[ -n "$mtime" ]] || return 1
   printf '%s\n' "$(( now - mtime ))"
+}
+
+game_loop_thread_alive() {
+  local pid="$1" dump=""
+  [[ "$LOOP_WATCHDOG" == "1" ]] || return 0
+
+  if command -v jcmd >/dev/null 2>&1; then
+    dump="$(timeout 8s jcmd "$pid" Thread.print 2>/dev/null || true)"
+  elif command -v jstack >/dev/null 2>&1; then
+    dump="$(timeout 8s jstack "$pid" 2>/dev/null || true)"
+  else
+    # No thread-dump tool: do not kill based on an unverifiable condition.
+    return 0
+  fi
+
+  [[ -n "$dump" ]] || return 0
+  printf '%s\n' "$dump" | grep -Eq 'nro\.cr\.run\('
 }
 
 prepare() {
@@ -185,12 +208,40 @@ game_loop() {
     echo "$child" > "$GAME_PID"
     printf '[%s] watchdog started game pid=%s\n' "$(date '+%F %T')" "$child" >> "$SUP_LOG"
 
-    local started failures elapsed
+    local started failures elapsed loop_failures last_loop_check now
     started="$(date +%s)"
     failures=0
+    loop_failures=0
+    last_loop_check=0
     while kill -0 "$child" 2>/dev/null; do
       sleep "$HEALTH_INTERVAL"
       kill -0 "$child" 2>/dev/null || break
+
+      # The MicroEmulator/AWT process can survive while NRO's actual
+      # update/render thread dies. Check that specific loop independently
+      # of network traffic and framebuffer/VNC state.
+      if [[ "$LOOP_WATCHDOG" == "1" ]]; then
+        now="$(date +%s)"
+        if (( now - last_loop_check >= LOOP_CHECK_INTERVAL )); then
+          last_loop_check="$now"
+          if game_loop_thread_alive "$child"; then
+            loop_failures=0
+          else
+            loop_failures=$((loop_failures + 1))
+            printf '[%s] loop watchdog: nro.cr.run not found (%s/%s), pid=%s\n' \
+              "$(date '+%F %T')" "$loop_failures" "$LOOP_FAILS" "$child" >> "$SUP_LOG"
+            trim_log "$SUP_LOG"
+            if [[ "$loop_failures" -ge "$LOOP_FAILS" ]]; then
+              printf '[%s] loop watchdog: game loop is gone; restarting GAME ONLY\n' \
+                "$(date '+%F %T')" >> "$SUP_LOG"
+              kill "$child" 2>/dev/null || true
+              sleep 3
+              kill -9 "$child" 2>/dev/null || true
+              break
+            fi
+          fi
+        fi
+      fi
 
       # If Java is alive but the client has produced no log activity for a
       # long time, treat it as a probable freeze and restart GAME ONLY.
@@ -251,6 +302,11 @@ start_game() {
     echo "[GAME] stall watchdog ENABLED: restart GAME ONLY after ${STALL_TIMEOUT}s without log activity"
   else
     echo "[GAME] stall watchdog OFF"
+  fi
+  if [[ "$LOOP_WATCHDOG" == "1" ]]; then
+    echo "[GAME] render-loop watchdog ENABLED: check nro.cr.run every ${LOOP_CHECK_INTERVAL}s, failures=${LOOP_FAILS}"
+  else
+    echo "[GAME] render-loop watchdog OFF"
   fi
   if pid_alive "$SUP_PID"; then
     echo "[GAME] supervisor already ON (pid $(cat "$SUP_PID"))"
@@ -365,6 +421,18 @@ case "${1:-}" in
   status) status ;;
   log) show_log ;;
   game-restart) restart_game_only ;;
+  loop-check)
+    if pid_alive "$GAME_PID"; then
+      p="$(cat "$GAME_PID")"
+      if game_loop_thread_alive "$p"; then
+        echo "[ON] nro.cr.run game loop found in pid $p"
+      else
+        echo "[OFF] nro.cr.run game loop not found in pid $p"
+      fi
+    else
+      echo "[OFF] game process not running"
+    fi
+    ;;
   _game_loop) game_loop ;;
-  *) echo "Usage: $0 {start|stop|restart|status|log|game-restart}"; exit 1 ;;
+  *) echo "Usage: $0 {start|stop|restart|status|log|game-restart|loop-check}"; exit 1 ;;
 esac
