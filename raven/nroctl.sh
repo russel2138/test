@@ -421,12 +421,19 @@ show_log() {
   echo; echo "=== VNC ==="; tail -n 100 "$VNC_LOG" 2>/dev/null || true
 }
 
+follow_log() {
+  echo "[LOG] live follow started (GAME + SUPERVISOR + VNC)"
+  echo "[LOG] use Raven console command: log-stop"
+  tail -n 40 -F "$GAME_LOG" "$SUP_LOG" "$VNC_LOG" 2>/dev/null
+}
+
 case "${1:-}" in
   start) prepare || exit 1; start_vnc || exit 1; start_game || exit 1; sleep 1; status ;;
   stop) stop_all ;;
   restart) stop_all; sleep 1; prepare || exit 1; start_vnc || exit 1; start_game || exit 1; sleep 1; status ;;
   status) status ;;
   log) show_log ;;
+  log-follow) follow_log ;;
   game-restart) restart_game_only ;;
   loop-check)
     if pid_alive "$GAME_PID"; then
@@ -441,5 +448,5 @@ case "${1:-}" in
     fi
     ;;
   _game_loop) game_loop ;;
-  *) echo "Usage: $0 {start|stop|restart|status|log|game-restart|loop-check}"; exit 1 ;;
+  *) echo "Usage: $0 {start|stop|restart|status|log|log-follow|game-restart|loop-check}"; exit 1 ;;
 esac
