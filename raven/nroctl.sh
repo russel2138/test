@@ -31,7 +31,7 @@ HEALTH_FAILS="${HEALTH_FAILS:-4}"
 # Conservative freeze detector: if Java is alive but the game log has not
 # changed for a long time, restart only the game process.
 STALL_WATCHDOG="${STALL_WATCHDOG:-1}"
-STALL_TIMEOUT="${STALL_TIMEOUT:-600}"
+STALL_TIMEOUT="${STALL_TIMEOUT:-300}"
 
 # Detect the specific NRO render/update loop (nro.cr.run). The JVM/AWT can
 # remain alive after that thread dies, leaving a blank MicroEmulator window.
@@ -208,11 +208,12 @@ game_loop() {
     echo "$child" > "$GAME_PID"
     printf '[%s] watchdog started game pid=%s\n' "$(date '+%F %T')" "$child" >> "$SUP_LOG"
 
-    local started failures elapsed loop_failures last_loop_check now
+    local started failures elapsed loop_failures last_loop_check now loop_ok log_age
     started="$(date +%s)"
     failures=0
     loop_failures=0
     last_loop_check=0
+    loop_ok=0
     while kill -0 "$child" 2>/dev/null; do
       sleep "$HEALTH_INTERVAL"
       kill -0 "$child" 2>/dev/null || break
@@ -225,8 +226,10 @@ game_loop() {
         if (( now - last_loop_check >= LOOP_CHECK_INTERVAL )); then
           last_loop_check="$now"
           if game_loop_thread_alive "$child"; then
+            loop_ok=1
             loop_failures=0
           else
+            loop_ok=0
             loop_failures=$((loop_failures + 1))
             printf '[%s] loop watchdog: nro.cr.run not found (%s/%s), pid=%s\n' \
               "$(date '+%F %T')" "$loop_failures" "$LOOP_FAILS" "$child" >> "$SUP_LOG"
@@ -243,12 +246,16 @@ game_loop() {
         fi
       fi
 
-      # If Java is alive but the client has produced no log activity for a
-      # long time, treat it as a probable freeze and restart GAME ONLY.
-      if [[ "$STALL_WATCHDOG" == "1" ]]; then
+      # Freeze case seen on Raven: Java + nro.cr.run can still exist while
+      # the visible game is stuck. Only act when BOTH are true:
+      #   1) the NRO loop was positively found in the latest thread check
+      #   2) the game log has received no NEW output for STALL_TIMEOUT seconds
+      # This avoids using a guessed network port and avoids killing a process
+      # merely because one signal is missing.
+      if [[ "$STALL_WATCHDOG" == "1" && "$loop_ok" == "1" ]]; then
         log_age="$(file_age_seconds "$GAME_LOG" 2>/dev/null || true)"
         if [[ -n "$log_age" && "$log_age" -ge "$STALL_TIMEOUT" ]]; then
-          printf '[%s] stall watchdog: no game log activity for %ss; restarting GAME ONLY (pid=%s)\n' \
+          printf '[%s] freeze watchdog: nro.cr.run alive BUT game log unchanged for %ss; restarting GAME ONLY (pid=%s)\n' \
             "$(date '+%F %T')" "$log_age" "$child" >> "$SUP_LOG"
           kill "$child" 2>/dev/null || true
           sleep 3
@@ -299,7 +306,7 @@ start_game() {
     echo "[GAME] network-port watchdog OFF; in-game reconnect remains in control"
   fi
   if [[ "$STALL_WATCHDOG" == "1" ]]; then
-    echo "[GAME] stall watchdog ENABLED: restart GAME ONLY after ${STALL_TIMEOUT}s without log activity"
+    echo "[GAME] freeze watchdog ENABLED: if nro.cr.run is alive + game log has no NEW output for ${STALL_TIMEOUT}s => restart GAME ONLY"
   else
     echo "[GAME] stall watchdog OFF"
   fi
