@@ -86,18 +86,22 @@ prepare() {
     mkdir -p "$STATE/suite-null"
   fi
 
-  ln -sfn "$XKBCOMP" /tmp/xxx/xkbcomp
-  rm -rf /tmp/nro-xkb-root1
-  ln -s "$XKBDIR" /tmp/nro-xkb-root1
+  # Xtigervnc was built to execute /usr/bin/xkbcomp. We cannot install
+  # packages system-wide on Raven, so patch that fixed-length path to /tmp/xxx
+  # and place a wrapper there. The wrapper injects the portable XKB include
+  # root, which fixes "Can't find file evdev for keycodes include".
+  rm -f /tmp/xxx/xkbcomp
+  cat > /tmp/xxx/xkbcomp <<EOF
+#!/bin/sh
+exec "$XKBCOMP" -I"$XKBDIR" "\$@"
+EOF
+  chmod +x /tmp/xxx/xkbcomp
 
-  if [[ ! -x "$VNC_BIN" || "$VNC_ORIG" -nt "$VNC_BIN" ]]; then
-    cp "$VNC_ORIG" "$VNC_BIN"
-    sed -i 's#/usr/bin#/tmp/xxx#g' "$VNC_BIN"
-    if grep -a -q '/usr/share/X11/xkb' "$VNC_BIN"; then
-      sed -i 's#/usr/share/X11/xkb#/tmp/nro-xkb-root1#g' "$VNC_BIN"
-    fi
-    chmod +x "$VNC_BIN"
-  fi
+  # Rebuild the patched binary on every start so a script update is never
+  # masked by a stale cached Xtigervnc-raven binary.
+  cp "$VNC_ORIG" "$VNC_BIN"
+  sed -i 's#/usr/bin#/tmp/xxx#g' "$VNC_BIN"
+  chmod +x "$VNC_BIN"
 }
 
 start_vnc() {
@@ -109,7 +113,17 @@ start_vnc() {
   fi
 
   : > "$VNC_LOG"
-  LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   nohup "$VNC_BIN" "$DISPLAY_NUM"     -geometry "$VNC_GEOMETRY"     -depth 24     -rfbport "$VNC_PORT"     -localhost no     -SecurityTypes VncAuth     -rfbauth "$VNC_PASS"     -xkbdir "$XKBDIR"     >"$VNC_LOG" 2>&1 &
+  echo "[VNC] starting with portable XKB root: $XKBDIR"
+  LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}" \
+  nohup "$VNC_BIN" "$DISPLAY_NUM" \
+    -geometry "$VNC_GEOMETRY" \
+    -depth 24 \
+    -rfbport "$VNC_PORT" \
+    -localhost no \
+    -SecurityTypes VncAuth \
+    -rfbauth "$VNC_PASS" \
+    -xkbdir "$XKBDIR" \
+    >"$VNC_LOG" 2>&1 &
 
   echo $! > "$VNC_PID"
   local i
