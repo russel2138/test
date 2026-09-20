@@ -23,6 +23,7 @@ VNC_PORT="${VNC_PORT:-${SERVER_PORT:-17149}}"
 VNC_GEOMETRY="640x480"
 
 NRO_SERVER_PORT="${NRO_SERVER_PORT:-14445}"
+NETWORK_WATCHDOG="${NETWORK_WATCHDOG:-0}"
 HEALTH_GRACE="${HEALTH_GRACE:-120}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-30}"
 HEALTH_FAILS="${HEALTH_FAILS:-4}"
@@ -176,6 +177,15 @@ game_loop() {
     while kill -0 "$child" 2>/dev/null; do
       sleep "$HEALTH_INTERVAL"
       kill -0 "$child" 2>/dev/null || break
+
+      # IMPORTANT: do not restart a live game just because a guessed remote
+      # NRO port is absent. Different client/server builds can use different
+      # ports and the game itself has reconnect logic/settings. By default
+      # the supervisor only restarts when the Java process actually exits.
+      if [[ "$NETWORK_WATCHDOG" != "1" ]]; then
+        continue
+      fi
+
       elapsed=$(( $(date +%s) - started ))
       [[ "$elapsed" -lt "$HEALTH_GRACE" ]] && continue
 
@@ -183,10 +193,10 @@ game_loop() {
         failures=0
       else
         failures=$((failures + 1))
-        printf '[%s] watchdog: NRO TCP :%s missing (%s/%s), pid=%s\n'           "$(date '+%F %T')" "$NRO_SERVER_PORT" "$failures" "$HEALTH_FAILS" "$child" >> "$SUP_LOG"
+        printf '[%s] optional network watchdog: TCP :%s missing (%s/%s), pid=%s\n'           "$(date '+%F %T')" "$NRO_SERVER_PORT" "$failures" "$HEALTH_FAILS" "$child" >> "$SUP_LOG"
         trim_log "$SUP_LOG"
         if [[ "$failures" -ge "$HEALTH_FAILS" ]]; then
-          echo "[$(date '+%F %T')] watchdog: restarting game" >> "$SUP_LOG"
+          echo "[$(date '+%F %T')] optional network watchdog: restarting game" >> "$SUP_LOG"
           kill "$child" 2>/dev/null || true
           sleep 3
           kill -9 "$child" 2>/dev/null || true
@@ -204,6 +214,11 @@ game_loop() {
 }
 
 start_game() {
+  if [[ "$NETWORK_WATCHDOG" == "1" ]]; then
+    echo "[GAME] network watchdog ENABLED on remote TCP :$NRO_SERVER_PORT"
+  else
+    echo "[GAME] process-only watchdog; in-game reconnect remains in control"
+  fi
   if pid_alive "$SUP_PID"; then
     echo "[GAME] supervisor already ON (pid $(cat "$SUP_PID"))"
     return 0
@@ -271,7 +286,11 @@ status() {
   port_listening && echo "[ON]  VNC port         :$VNC_PORT LISTEN" || echo "[OFF] VNC port         :$VNC_PORT"
   [[ -n "$spid" ]] && echo "[ON]  Game supervisor  pid=$spid" || echo "[OFF] Game supervisor"
   [[ -n "$gpid" ]] && echo "[ON]  Game Java        pid=$gpid" || echo "[OFF] Game Java"
-  game_connected && echo "[ON]  Game network     TCP :$NRO_SERVER_PORT ESTABLISHED" || echo "[OFF] Game network"
+  if game_connected; then
+    echo "[INFO] Game network     observed TCP :$NRO_SERVER_PORT ESTABLISHED"
+  else
+    echo "[INFO] Game network     TCP :$NRO_SERVER_PORT not observed (not used for health)"
+  fi
   [[ -s "$GAME" ]] && echo "[ON]  game.jar         $GAME" || echo "[OFF] game.jar"
   echo "State: $STATE"
   echo "============================================"
