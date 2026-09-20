@@ -57,22 +57,63 @@ trap shutdown INT TERM
 
 "$SCRIPT_DIR/nroctl.sh" start
 
+watchdog_loop() {
+  while true; do
+    sleep 30
+
+    bad=0
+    if [[ ! -s "$DATA/vnc.pid" ]] || ! kill -0 "$(cat "$DATA/vnc.pid" 2>/dev/null)" 2>/dev/null; then
+      echo "[raven] VNC process is down"
+      bad=1
+    fi
+    if [[ ! -s "$DATA/game-supervisor.pid" ]] || ! kill -0 "$(cat "$DATA/game-supervisor.pid" 2>/dev/null)" 2>/dev/null; then
+      echo "[raven] game supervisor is down"
+      bad=1
+    fi
+
+    if [[ "$bad" -eq 1 ]]; then
+      echo "[raven] restarting full NRO stack..."
+      "$SCRIPT_DIR/nroctl.sh" restart || true
+    fi
+  done
+}
+
+watchdog_loop &
+WATCHDOG_PID=$!
+trap 'kill "$WATCHDOG_PID" 2>/dev/null || true; shutdown' INT TERM
+
+echo "[raven] Console commands: status | log | restart | vnc | help"
+
+# Raven sends panel console input to stdin of the main process. Keep this
+# script in the foreground so simple commands can be typed directly into
+# the Raven console without SSH.
 while true; do
-  sleep 30 &
-  wait $! || true
-
-  bad=0
-  if [[ ! -s "$DATA/vnc.pid" ]] || ! kill -0 "$(cat "$DATA/vnc.pid" 2>/dev/null)" 2>/dev/null; then
-    echo "[raven] VNC process is down"
-    bad=1
-  fi
-  if [[ ! -s "$DATA/game-supervisor.pid" ]] || ! kill -0 "$(cat "$DATA/game-supervisor.pid" 2>/dev/null)" 2>/dev/null; then
-    echo "[raven] game supervisor is down"
-    bad=1
+  if ! IFS= read -r cmd; then
+    sleep 3600
+    continue
   fi
 
-  if [[ "$bad" -eq 1 ]]; then
-    echo "[raven] restarting full NRO stack..."
-    "$SCRIPT_DIR/nroctl.sh" restart || true
-  fi
+  case "$cmd" in
+    status)
+      "$SCRIPT_DIR/nroctl.sh" status
+      ;;
+    log|logs)
+      "$SCRIPT_DIR/nroctl.sh" log
+      ;;
+    restart)
+      echo "[raven] restarting NRO stack..."
+      "$SCRIPT_DIR/nroctl.sh" restart
+      ;;
+    vnc)
+      echo "VNC address : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
+      echo "VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
+      ;;
+    help|"")
+      echo "Commands: status | log | restart | vnc | help"
+      ;;
+    *)
+      echo "[raven] unknown command: $cmd"
+      echo "Commands: status | log | restart | vnc | help"
+      ;;
+  esac
 done
