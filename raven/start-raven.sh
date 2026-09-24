@@ -54,9 +54,15 @@ shutdown() {
 }
 trap shutdown INT TERM
 
-# A full Raven server restart always restores the selected runtime.
+# A full Raven server restart normally restores the selected runtime.
+# If the selected files are missing/broken, keep the panel console alive
+# instead of boot-looping so the user can upload/fix files and select again.
 rm -f "$DISABLED_MARKER"
-"$SCRIPT_DIR/nroctl.sh" start
+if ! "$SCRIPT_DIR/nroctl.sh" start; then
+  echo "[raven] NRO stack did not start; console stays available."
+  echo "[raven] Upload/fix JARs, run 'list', then 'start <emulator> <game>'."
+  touch "$DISABLED_MARKER"
+fi
 
 watchdog_loop() {
   while true; do
@@ -133,8 +139,11 @@ while true; do
       "$SCRIPT_DIR/nroctl.sh" list
       ;;
     start)
-      rm -f "$DISABLED_MARKER"
-      "$SCRIPT_DIR/nroctl.sh" start "${args[@]}"
+      if "$SCRIPT_DIR/nroctl.sh" start "${args[@]}"; then
+        rm -f "$DISABLED_MARKER"
+      else
+        echo "[raven] start failed; watchdog state unchanged"
+      fi
       ;;
     stop)
       touch "$DISABLED_MARKER"
@@ -163,10 +172,13 @@ while true; do
       "$SCRIPT_DIR/nroctl.sh" game-restart
       ;;
     restart|use)
-      rm -f "$DISABLED_MARKER"
       stop_live_log
       echo "[raven] restarting NRO stack..."
-      "$SCRIPT_DIR/nroctl.sh" restart "${args[@]}"
+      if "$SCRIPT_DIR/nroctl.sh" restart "${args[@]}"; then
+        rm -f "$DISABLED_MARKER"
+      else
+        echo "[raven] restart failed; watchdog state unchanged"
+      fi
       ;;
     vnc)
       echo "VNC address : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
