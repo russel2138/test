@@ -4,13 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${NRO_ROOT:-${HOME:-/home/container}}"
 DATA="${NRO_DATA:-$ROOT/nro-data}"
+DISABLED_MARKER="$DATA/stack.disabled"
 export NRO_ROOT="$ROOT" NRO_DATA="$DATA"
 
-[[ -s "$ROOT/game.jar" ]] || {
-  echo "[raven] ERROR: upload the NRO J2ME jar as $ROOT/game.jar" >&2
-  exit 1
-}
-
+mkdir -p "$ROOT/games" "$ROOT/emulators"
 mkdir -p "$DATA" "$DATA/.vnc" "$DATA/microemu-home/.microemulator/suite-null"
 chmod +x "$SCRIPT_DIR/bootstrap-runtime.sh" "$SCRIPT_DIR/nroctl.sh"
 "$SCRIPT_DIR/bootstrap-runtime.sh"
@@ -40,12 +37,14 @@ export VNC_PORT
 
 echo "============================================================"
 echo " NRO on Raven (GitHub managed runtime)"
-echo " Source      : $SCRIPT_DIR"
-echo " Game        : $ROOT/game.jar"
-echo " State       : $DATA/microemu-home/.microemulator"
-echo " VNC address : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
-echo " VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
-echo " Java        : $(java -version 2>&1 | head -n1)"
+echo " Source       : $SCRIPT_DIR"
+echo " Legacy game  : $ROOT/game.jar"
+echo " Game uploads : $ROOT/games/"
+echo " Emulators    : $ROOT/emulators/"
+echo " Data/state   : $DATA"
+echo " VNC address  : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
+echo " VNC password : $(cat "$PASS_TXT" 2>/dev/null || true)"
+echo " Java         : $(java -version 2>&1 | head -n1)"
 echo "============================================================"
 
 shutdown() {
@@ -55,11 +54,19 @@ shutdown() {
 }
 trap shutdown INT TERM
 
+# A full Raven server restart always restores the selected runtime.
+rm -f "$DISABLED_MARKER"
 "$SCRIPT_DIR/nroctl.sh" start
 
 watchdog_loop() {
   while true; do
     sleep 30
+
+    # Console "stop" intentionally pauses automatic recovery until "start",
+    # "restart", or a full Raven server restart.
+    if [[ -e "$DISABLED_MARKER" ]]; then
+      continue
+    fi
 
     bad=0
     if [[ ! -s "$DATA/vnc.pid" ]] || ! kill -0 "$(cat "$DATA/vnc.pid" 2>/dev/null)" 2>/dev/null; then
@@ -93,18 +100,47 @@ stop_live_log() {
 
 trap 'stop_live_log; kill "$WATCHDOG_PID" 2>/dev/null || true; shutdown' INT TERM
 
-echo "[raven] Console commands: status | log | log-stop | loop-check | game-restart | restart | vnc | help"
+print_help() {
+  echo "Commands:"
+  echo "  list"
+  echo "  start [<emulator> <game>]"
+  echo "  stop"
+  echo "  restart [<emulator> <game>]"
+  echo "  status"
+  echo "  log | log-stop"
+  echo "  loop-check | game-restart"
+  echo "  vnc | help"
+  echo "Example: restart MICRO_NST AUTO50_X1"
+}
 
-# Raven sends panel console input to stdin of the main process. Keep this
-# script in the foreground so simple commands can be typed directly into
-# the Raven console without SSH.
+echo "[raven] Console ready."
+print_help
+
+# Raven sends panel console input to stdin of the main process. This is not a shell.
 while true; do
   if ! IFS= read -r cmd; then
     sleep 3600
     continue
   fi
 
-  case "$cmd" in
+  # Split into simple whitespace-separated args. Never eval panel input.
+  read -r -a parts <<< "$cmd"
+  action="${parts[0]:-}"
+  args=("${parts[@]:1}")
+
+  case "$action" in
+    list)
+      "$SCRIPT_DIR/nroctl.sh" list
+      ;;
+    start)
+      rm -f "$DISABLED_MARKER"
+      "$SCRIPT_DIR/nroctl.sh" start "${args[@]}"
+      ;;
+    stop)
+      touch "$DISABLED_MARKER"
+      stop_live_log
+      "$SCRIPT_DIR/nroctl.sh" stop
+      ;;
     status)
       "$SCRIPT_DIR/nroctl.sh" status
       ;;
@@ -126,20 +162,22 @@ while true; do
     game-restart)
       "$SCRIPT_DIR/nroctl.sh" game-restart
       ;;
-    restart)
+    restart|use)
+      rm -f "$DISABLED_MARKER"
+      stop_live_log
       echo "[raven] restarting NRO stack..."
-      "$SCRIPT_DIR/nroctl.sh" restart
+      "$SCRIPT_DIR/nroctl.sh" restart "${args[@]}"
       ;;
     vnc)
       echo "VNC address : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
       echo "VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
       ;;
     help|"")
-      echo "Commands: status | log | log-stop | loop-check | game-restart | restart | vnc | help"
+      print_help
       ;;
     *)
       echo "[raven] unknown command: $cmd"
-      echo "Commands: status | log | log-stop | loop-check | game-restart | restart | vnc | help"
+      print_help
       ;;
   esac
 done
