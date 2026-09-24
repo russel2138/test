@@ -368,7 +368,7 @@ game_loop_thread_alive() {
   fi
 
   [[ -n "$dump" ]] || return 0
-  printf '%s\n' "$dump" | grep -Eq 'nro\.cr\.run\('
+  printf '%s\n' "$dump" | grep -Eq "$LOOP_THREAD_PATTERN"
 }
 
 prepare() {
