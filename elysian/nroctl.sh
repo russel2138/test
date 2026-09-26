@@ -52,17 +52,6 @@ HEALTH_GRACE="${HEALTH_GRACE:-120}"
 HEALTH_INTERVAL="${HEALTH_INTERVAL:-30}"
 HEALTH_FAILS="${HEALTH_FAILS:-4}"
 
-# Conservative freeze detector: if Java is alive but the game log has not
-# changed for a long time, restart only the game process.
-STALL_WATCHDOG="${STALL_WATCHDOG:-1}"
-STALL_TIMEOUT="${STALL_TIMEOUT:-300}"
-
-# Detect the specific NRO render/update loop (nro.cr.run). The JVM/AWT can
-# remain alive after that thread dies, leaving a blank MicroEmulator window.
-LOOP_WATCHDOG="${LOOP_WATCHDOG:-1}"
-LOOP_CHECK_INTERVAL="${LOOP_CHECK_INTERVAL:-60}"
-LOOP_FAILS="${LOOP_FAILS:-2}"
-LOOP_THREAD_PATTERN="${LOOP_THREAD_PATTERN:-}"
 
 JAVA_XMS="${JAVA_XMS:-32m}"
 JAVA_XMX="${JAVA_XMX:-192m}"
@@ -243,17 +232,6 @@ detect_midlet() {
   [[ -n "$cls" ]] || return 1
   MIDLET_CLASS="$cls"
 
-  # The old watchdog knows this thread only for the stock NRO client.
-  # Modded clients can rename/obfuscate it, so never restart them from an
-  # unverified symbol. LOOP_THREAD_PATTERN can still be provided explicitly.
-  if [[ -z "$LOOP_THREAD_PATTERN" ]]; then
-    if [[ "$MIDLET_CLASS" == "nro.GameMidlet" ]]; then
-      LOOP_THREAD_PATTERN='nro\.cr\.run\('
-    else
-      LOOP_WATCHDOG=0
-      STALL_WATCHDOG=0
-    fi
-  fi
 }
 
 select_runtime() {
@@ -366,23 +344,6 @@ list_runtime() {
   echo "============================================"
 }
 
-game_loop_thread_alive() {
-  local pid="$1" dump=""
-  [[ "$LOOP_WATCHDOG" == "1" ]] || return 0
-
-  if command -v jcmd >/dev/null 2>&1; then
-    dump="$(timeout 8s jcmd "$pid" Thread.print 2>/dev/null || true)"
-  elif command -v jstack >/dev/null 2>&1; then
-    dump="$(timeout 8s jstack "$pid" 2>/dev/null || true)"
-  else
-    # No thread-dump tool: do not kill based on an unverifiable condition.
-    return 0
-  fi
-
-  [[ -n "$dump" ]] || return 0
-  printf '%s\n' "$dump" | grep -Eq "$LOOP_THREAD_PATTERN"
-}
-
 prepare() {
   mkdir -p "$DATA" "$DATA/logs" "$EMU_HOME" "$STATE" "$ROOT/.vnc" /tmp/xxx
 
@@ -474,61 +435,12 @@ game_loop() {
     echo "$child" > "$GAME_PID"
     printf '[%s] watchdog started game pid=%s\n' "$(date '+%F %T')" "$child" >> "$SUP_LOG"
 
-    local started failures elapsed loop_failures last_loop_check now loop_ok log_age
+    local started failures elapsed
     started="$(date +%s)"
     failures=0
-    loop_failures=0
-    last_loop_check=0
-    loop_ok=0
     while kill -0 "$child" 2>/dev/null; do
       sleep "$HEALTH_INTERVAL"
       kill -0 "$child" 2>/dev/null || break
-
-      # The MicroEmulator/AWT process can survive while NRO's actual
-      # update/render thread dies. Check that specific loop independently
-      # of network traffic and framebuffer/VNC state.
-      if [[ "$LOOP_WATCHDOG" == "1" ]]; then
-        now="$(date +%s)"
-        if (( now - last_loop_check >= LOOP_CHECK_INTERVAL )); then
-          last_loop_check="$now"
-          if game_loop_thread_alive "$child"; then
-            loop_ok=1
-            loop_failures=0
-          else
-            loop_ok=0
-            loop_failures=$((loop_failures + 1))
-            printf '[%s] loop watchdog: nro.cr.run not found (%s/%s), pid=%s\n' \
-              "$(date '+%F %T')" "$loop_failures" "$LOOP_FAILS" "$child" >> "$SUP_LOG"
-            trim_log "$SUP_LOG"
-            if [[ "$loop_failures" -ge "$LOOP_FAILS" ]]; then
-              printf '[%s] loop watchdog: game loop is gone; restarting GAME ONLY\n' \
-                "$(date '+%F %T')" >> "$SUP_LOG"
-              kill "$child" 2>/dev/null || true
-              sleep 3
-              kill -9 "$child" 2>/dev/null || true
-              break
-            fi
-          fi
-        fi
-      fi
-
-      # Freeze case seen on Elysian: Java + nro.cr.run can still exist while
-      # the visible game is stuck. Only act when BOTH are true:
-      #   1) the NRO loop was positively found in the latest thread check
-      #   2) the game log has received no NEW output for STALL_TIMEOUT seconds
-      # This avoids using a guessed network port and avoids killing a process
-      # merely because one signal is missing.
-      if [[ "$STALL_WATCHDOG" == "1" && "$loop_ok" == "1" ]]; then
-        log_age="$(file_age_seconds "$GAME_LOG" 2>/dev/null || true)"
-        if [[ -n "$log_age" && "$log_age" -ge "$STALL_TIMEOUT" ]]; then
-          printf '[%s] freeze watchdog: nro.cr.run alive BUT game log unchanged for %ss; restarting GAME ONLY (pid=%s)\n' \
-            "$(date '+%F %T')" "$log_age" "$child" >> "$SUP_LOG"
-          kill "$child" 2>/dev/null || true
-          sleep 3
-          kill -9 "$child" 2>/dev/null || true
-          break
-        fi
-      fi
 
       # IMPORTANT: do not restart a live game just because a guessed remote
       # NRO port is absent. Different client/server builds can use different
@@ -570,16 +482,6 @@ start_game() {
     echo "[GAME] network watchdog ENABLED on remote TCP :$NRO_SERVER_PORT"
   else
     echo "[GAME] network-port watchdog OFF; in-game reconnect remains in control"
-  fi
-  if [[ "$STALL_WATCHDOG" == "1" ]]; then
-    echo "[GAME] freeze watchdog ENABLED: if nro.cr.run is alive + game log has no NEW output for ${STALL_TIMEOUT}s => restart GAME ONLY"
-  else
-    echo "[GAME] stall watchdog OFF"
-  fi
-  if [[ "$LOOP_WATCHDOG" == "1" ]]; then
-    echo "[GAME] render-loop watchdog ENABLED: check nro.cr.run every ${LOOP_CHECK_INTERVAL}s, failures=${LOOP_FAILS}"
-  else
-    echo "[GAME] render-loop watchdog OFF"
   fi
   if pid_alive "$SUP_PID"; then
     echo "[GAME] supervisor already ON (pid $(cat "$SUP_PID"))"
@@ -781,27 +683,12 @@ case "${1:-}" in
   game-restart)
     restart_game_only
     ;;
-  loop-check)
-    choose_runtime >/dev/null 2>&1 || true
-    if [[ "$LOOP_WATCHDOG" != "1" || -z "$LOOP_THREAD_PATTERN" ]]; then
-      echo "[INFO] loop check unavailable for MIDlet ${MIDLET_CLASS:-unknown} (no verified thread pattern)"
-    elif pid_alive "$GAME_PID"; then
-      p="$(cat "$GAME_PID")"
-      if game_loop_thread_alive "$p"; then
-        echo "[ON] game loop pattern found in pid $p"
-      else
-        echo "[OFF] game loop pattern not found in pid $p"
-      fi
-    else
-      echo "[OFF] game process not running"
-    fi
-    ;;
   _game_loop)
     choose_runtime || exit 2
     game_loop
     ;;
   *)
-    echo "Usage: $0 {list|start [emulator game]|stop|restart [emulator game]|reset-state [emulator game]|status|log|log-follow|game-restart|loop-check}"
+    echo "Usage: $0 {list|start [emulator game]|stop|restart [emulator game]|reset-state [emulator game]|status|log|log-follow|game-restart}"
     exit 1
     ;;
 esac
