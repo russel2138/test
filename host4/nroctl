@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${NRO_ROOT:-$HOME/data}"
+APP="${NRO_APP:-$HOME/nro-host4}"
+RUN="$ROOT/run"
+LOG="$ROOT/logs"
+DATA="$ROOT/nro-data"
+GAME="${NRO_GAME:-$ROOT/a.jar}"
+
+mkdir -p "$RUN" "$LOG" "$DATA"
+components=(display vnc game)
+
+pidfile() { printf '%s/%s.pid' "$RUN" "$1"; }
+logfile() { printf '%s/%s.log' "$LOG" "$1"; }
+
+alive() {
+  local p
+  [[ -s "$(pidfile "$1")" ]] || return 1
+  p="$(cat "$(pidfile "$1")" 2>/dev/null || true)"
+  [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null
+}
+
+start_one() {
+  local c="$1"
+  if alive "$c"; then
+    echo "[$c] already ON pid=$(cat "$(pidfile "$c")")"
+    return 0
+  fi
+  rm -f "$(pidfile "$c")"
+  nohup "$APP/run-$c.sh" >>"$(logfile "$c")" 2>&1 </dev/null &
+  local p=$!
+  echo "$p" >"$(pidfile "$c")"
+  sleep 0.7
+  if kill -0 "$p" 2>/dev/null; then
+    echo "[$c] ON pid=$p"
+  else
+    echo "[$c] FAILED"
+    tail -n 80 "$(logfile "$c")" || true
+    rm -f "$(pidfile "$c")"
+    return 1
+  fi
+}
+
+stop_one() {
+  local c="$1" p=""
+  [[ -s "$(pidfile "$c")" ]] && p="$(cat "$(pidfile "$c")" 2>/dev/null || true)"
+  if [[ -n "$p" ]]; then
+    kill "$p" 2>/dev/null || true
+    sleep 0.3
+    kill -9 "$p" 2>/dev/null || true
+  fi
+  rm -f "$(pidfile "$c")"
+  echo "[$c] OFF"
+}
+
+start_all() {
+  [[ -s "$GAME" ]] || { echo "[ERROR] missing $GAME" >&2; return 1; }
+  start_one display
+  start_one vnc
+  start_one game
+}
+
+stop_all() {
+  stop_one game
+  stop_one vnc
+  stop_one display
+}
+
+status_all() {
+  echo "=== NRO / HOST4 ==="
+  for c in "${components[@]}"; do
+    if alive "$c"; then
+      echo "$c: ON pid=$(cat "$(pidfile "$c")")"
+    else
+      echo "$c: OFF"
+    fi
+  done
+  echo "game: $GAME"
+  echo "state: $DATA/microemu-home/.microemulator"
+  [[ -s "$DATA/vnc-password.txt" ]] && echo "vnc pass: $(head -n1 "$DATA/vnc-password.txt")"
+  echo "watchdog: OFF"
+}
+
+case "${1:-status}" in
+  start) start_all ;;
+  stop) stop_all ;;
+  restart) stop_all; sleep 1; start_all ;;
+  status) status_all ;;
+  vnc)
+    echo "SSH tunnel:"
+    echo "  ssh -N -L 5900:127.0.0.1:5900 clientuser@135.181.75.25 -p 3061"
+    echo "Then TigerVNC: 127.0.0.1::5900"
+    [[ -s "$DATA/vnc-password.txt" ]] && echo "Password: $(head -n1 "$DATA/vnc-password.txt")"
+    ;;
+  log|logs)
+    c="${2:-game}"
+    tail -n 120 "$(logfile "$c")"
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status|vnc|logs <display|vnc|game>}"
+    exit 2
+    ;;
+esac
