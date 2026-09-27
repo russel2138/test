@@ -65,8 +65,6 @@ echo " Data/state   : $DATA"
 echo " VNC address  : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
 echo " VNC password : $(cat "$PASS_TXT" 2>/dev/null || true)"
 echo " Java         : $(java -version 2>&1 | head -n1)"
-echo " Supervisor   : NONE"
-echo " Watchdog     : NONE"
 echo " Autorestart  : OFF"
 echo "============================================================"
 
