@@ -10,37 +10,45 @@ Designed for the Wispbyte free Java server tested with:
 
 This target intentionally has **no internal watchdogs and no restart loop**.
 
-## Files
+## Why the runtime is prebuilt
 
-Upload the NRO client with Wispbyte File Manager:
+Wispbyte stopped the free server while `apt/dpkg` was preparing TigerVNC, even though the reported average CPU was only about 18%.
+
+To avoid that startup spike, GitHub Actions builds the Ubuntu 24.04 amd64 runtime and publishes it at:
+
+```text
+https://github.com/russel2138/test/releases/tag/wispbyte-runtime-v1
+```
+
+Wispbyte only downloads and extracts the finished runtime. It does not run `apt` or `dpkg`.
+
+## Game file
+
+Upload the NRO client as:
 
 ```text
 /home/container/games/NRO_NEW.jar
 ```
 
-The repository ignores JAR files, so the game itself stays outside GitHub.
+JAR files remain outside GitHub.
 
-## Startup Command
-
-Set Wispbyte Startup Command to:
+## Run from an interactive Bash console
 
 ```bash
-bash -lc 'mkdir -p "$HOME/nro-data"; u="https://raw.githubusercontent.com/russel2138/test/main/wispbyte/start.sh"; t="$HOME/nro-data/wispbyte-start.sh.tmp"; if curl -fsSL "$u" -o "$t"; then mv "$t" "$HOME/nro-data/wispbyte-start.sh"; fi; exec bash "$HOME/nro-data/wispbyte-start.sh"'
+curl -fsSL https://raw.githubusercontent.com/russel2138/test/main/wispbyte/start.sh -o /tmp/wispbyte-start.sh && bash /tmp/wispbyte-start.sh
 ```
 
-The latest script is fetched from GitHub on every start. If the fetch fails, the cached script is used.
-
-First boot downloads MicroEmulator and a portable TigerVNC runtime into:
+On first run the script downloads the prebuilt runtime into:
 
 ```text
-/home/container/nro-data/
+/home/container/nro-runtime
 ```
 
-## Connect
+Later runs reuse it.
 
-The script binds TigerVNC directly to Wispbyte's `SERVER_PORT`.
+## VNC
 
-The Console prints:
+TigerVNC binds directly to Wispbyte's `SERVER_PORT`. The Console prints:
 
 ```text
 VNC port: ...
@@ -48,25 +56,17 @@ VNC pass: ...
 Watchdog: OFF
 ```
 
-Use the public allocation hostname/IP shown by Wispbyte plus that port in your VNC client.
-
-You can set a fixed password with environment variable `VNC_PASSWORD`; VNC uses at most the first 8 characters.
+Connect with a VNC client using the public Wispbyte allocation plus that port.
 
 ## State
 
-Per-game state:
+Game RMS/settings are intentionally disposable:
 
 ```text
-/home/container/nro-data/profiles/NRO_NEW/stock/.microemulator/
+/tmp/nro-wispbyte/home/.microemulator
 ```
 
-To wipe state, stop the NRO server, temporarily switch Startup Command to an interactive bash shell, then run:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/russel2138/test/main/wispbyte/reset-state.sh | bash
-```
-
-Then restore the normal Startup Command and start the server.
+Every start removes and recreates this session directory.
 
 ## Resource defaults
 
@@ -76,4 +76,4 @@ JAVA_XMX=160m
 VNC_GEOMETRY=640x480
 ```
 
-Override these through environment variables if needed.
+Override them with environment variables if needed.
