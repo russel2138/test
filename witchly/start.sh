@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="${NRO_ROOT:-${HOME:-/home/container}}"
 RUNTIME="${NRO_RUNTIME:-$ROOT/nro-runtime}"
 GAMES_DIR="$ROOT/games"
-GAME="${NRO_GAME:-$GAMES_DIR/NRO_NEW.jar}"
+GAME="${NRO_GAME:-$ROOT/a.jar}"
 
 RUNTIME_URL="${NRO_RUNTIME_URL:-https://github.com/russel2138/test/releases/download/nro-runtime-v1/nro-runtime-focal-amd64.tar.gz}"
 
@@ -100,7 +100,7 @@ echo "[WITCHLY] PORT: ${PORT:-unset}"
 
 [[ -s "$GAME" ]] || {
   echo "[ERROR] NRO game not found: $GAME" >&2
-  echo "[ERROR] Upload it as: $GAMES_DIR/NRO_NEW.jar" >&2
+  echo "[ERROR] Upload/rename the game as: $ROOT/a.jar" >&2
   exit 1
 }
 
