@@ -56,7 +56,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:99 \
     VNC_PORT=5900 \
     WEB_PORT=8080 \
-    JAVA_XMX=128m
+    JAVA_XMX=192m
 
 # Minimal runtime: Java + Xvnc. WebSocket/static proxy and cloudflared are native binaries.
 RUN apt-get update && apt-get install -y --no-install-recommends \
