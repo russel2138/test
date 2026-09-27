@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT="${NRO_ROOT:-${HOME:-/home/container}}"
 RUNTIME="${NRO_RUNTIME:-$ROOT/nro-runtime}"
-GAMES_DIR="$ROOT/games"
 GAME="${NRO_GAME:-$ROOT/a.jar}"
 
 RUNTIME_URL="${NRO_RUNTIME_URL:-https://github.com/russel2138/test/releases/download/nro-runtime-v1/nro-runtime-focal-amd64.tar.gz}"
@@ -33,6 +32,9 @@ VNC_DIR="$DATA/.vnc"
 VNC_PASS_FILE="$VNC_DIR/passwd"
 VNC_PASSWORD_FILE="$VNC_DIR/password.txt"
 VNC_LOG="$DATA/vnc.log"
+VNC_PID_FILE="$DATA/vnc.pid"
+GAME_PID_FILE="$DATA/game.pid"
+VNC_PORT_FILE="$DATA/vnc-port.txt"
 
 fetch() {
   local url="$1" out="$2"
@@ -107,6 +109,7 @@ echo "[WITCHLY] PORT: ${PORT:-unset}"
 ensure_runtime
 
 mkdir -p "$STATE/suite-null" "$VNC_DIR" /tmp/xxx
+printf '%s\n' "$VNC_PORT" > "$VNC_PORT_FILE"
 
 unzip -p "$GAME" META-INF/MANIFEST.MF 2>/dev/null | tr -d '\r' > "$JAD.tmp" || true
 [[ -s "$JAD.tmp" ]] || {
@@ -164,15 +167,24 @@ chmod +x "$VNC_BIN"
 
 cleanup() {
   set +e
-  [[ -n "${VNC_PID:-}" ]] && kill "$VNC_PID" 2>/dev/null || true
+  if [[ -n "${GAME_PID:-}" ]]; then
+    kill "$GAME_PID" 2>/dev/null || true
+    wait "$GAME_PID" 2>/dev/null || true
+  fi
+  if [[ -n "${VNC_PID:-}" ]]; then
+    kill "$VNC_PID" 2>/dev/null || true
+    wait "$VNC_PID" 2>/dev/null || true
+  fi
+  rm -f "$GAME_PID_FILE" "$VNC_PID_FILE"
 }
 trap cleanup EXIT INT TERM
 
 : > "$VNC_LOG"
 
 echo "[VNC] starting on port $VNC_PORT"
-LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}" "$VNC_BIN" "$DISPLAY_NUM"   -geometry "$VNC_GEOMETRY"   -depth "$VNC_DEPTH"   -rfbport "$VNC_PORT"   -localhost no   -SecurityTypes VncAuth   -rfbauth "$VNC_PASS_FILE"   -xkbdir "$XKBDIR"   >"$VNC_LOG" 2>&1 &
+LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}" "$VNC_BIN" "$DISPLAY_NUM"   -geometry "$VNC_GEOMETRY"   -depth "$VNC_DEPTH"   -rfbport "$VNC_PORT"   -SecurityTypes VncAuth   -rfbauth "$VNC_PASS_FILE"   -xkbdir "$XKBDIR"   >"$VNC_LOG" 2>&1 &
 VNC_PID=$!
+printf '%s\n' "$VNC_PID" > "$VNC_PID_FILE"
 
 sleep 2
 kill -0 "$VNC_PID" 2>/dev/null || {
@@ -195,6 +207,16 @@ echo "VNC pass:   $VNC_PASSWORD_ACTUAL"
 echo "Heap:       $JAVA_XMS -> $JAVA_XMX"
 echo "Watchdog:   OFF"
 echo "================================================="
-echo "[NRO] Java runs in foreground. No watchdog / no restart loop."
+echo "[NRO] No watchdog / no restart loop."
 
-exec java   -Xms"$JAVA_XMS"   -Xmx"$JAVA_XMX"   -XX:+UseSerialGC   -Duser.home="$EMU_HOME"   -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel   -cp "$CP"   org.microemu.app.Main   --rms file   --resizableDevice 320 240   --appclasspath "$GAME"   --propertiesjad "$JAD"   --quit   "$MIDLET"
+java   -Xms"$JAVA_XMS"   -Xmx"$JAVA_XMX"   -XX:+UseSerialGC   -Duser.home="$EMU_HOME"   -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel   -cp "$CP"   org.microemu.app.Main   --rms file   --resizableDevice 320 240   --appclasspath "$GAME"   --propertiesjad "$JAD"   --quit   "$MIDLET"   </dev/null &
+GAME_PID=$!
+printf '%s\n' "$GAME_PID" > "$GAME_PID_FILE"
+
+set +e
+wait "$GAME_PID"
+GAME_RC=$?
+set -e
+
+echo "[NRO] game exited with code $GAME_RC"
+exit "$GAME_RC"
