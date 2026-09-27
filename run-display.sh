@@ -6,10 +6,10 @@ VNC_PORT="${VNC_PORT:-5900}"
 
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 
-echo "[display] TigerVNC Xvnc ${DISPLAY_NUM} 320x280x16, VNC localhost:${VNC_PORT}"
+echo "[display] TigerVNC Xvnc ${DISPLAY_NUM} 400x340x16, VNC localhost:${VNC_PORT}"
 
 exec /usr/bin/Xtigervnc "${DISPLAY_NUM}" \
-  -geometry 320x280 \
+  -geometry 400x340 \
   -depth 16 \
   -rfbport "${VNC_PORT}" \
   -localhost \
