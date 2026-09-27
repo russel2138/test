@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="${NRO_ROOT:-${HOME:-/home/container}}"
 DATA="${NRO_DATA:-$ROOT/nro-data}"
-DISABLED_MARKER="$DATA/stack.disabled"
 export NRO_ROOT="$ROOT" NRO_DATA="$DATA"
 
 mkdir -p "$ROOT/games" "$ROOT/emulators"
@@ -12,8 +11,6 @@ mkdir -p "$DATA" "$DATA/.vnc" "$DATA/microemu-home/.microemulator/suite-null"
 chmod +x "$SCRIPT_DIR/bootstrap-runtime.sh" "$SCRIPT_DIR/nroctl.sh"
 "$SCRIPT_DIR/bootstrap-runtime.sh"
 
-# Fresh Pterodactyl hosts may contain only server.jar. Seed the default game
-# from the checked-out repository, while never overwriting a user's own game.
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_GAME="$REPO_ROOT/game.jar"
 echo "[raven] repo game   : $REPO_GAME"
@@ -23,10 +20,10 @@ if [[ ! -s "$ROOT/game.jar" ]]; then
     echo "[raven] seeding default game.jar from repository ($(wc -c < "$REPO_GAME") bytes)"
     cp -f "$REPO_GAME" "$ROOT/game.jar"
     sync "$ROOT/game.jar" 2>/dev/null || true
-    if [[ ! -s "$ROOT/game.jar" ]]; then
-      echo "[raven] ERROR: copy completed but host game.jar is still missing" >&2
+    [[ -s "$ROOT/game.jar" ]] || {
+      echo "[raven] ERROR: host game.jar is still missing after copy" >&2
       exit 1
-    fi
+    }
     echo "[raven] host game ready ($(wc -c < "$ROOT/game.jar") bytes)"
   else
     echo "[raven] ERROR: repository game.jar missing at $REPO_GAME" >&2
@@ -59,63 +56,20 @@ VNC_PORT="${VNC_PORT:-${SERVER_PORT:-17149}}"
 export VNC_PORT
 
 echo "============================================================"
-echo " NRO on Raven (GitHub managed runtime)"
+echo " NRO on Raven / Pterodactyl"
 echo " Source       : $SCRIPT_DIR"
 echo " Legacy game  : $ROOT/game.jar"
 echo " Game uploads : $ROOT/games/"
 echo " Emulators    : $ROOT/emulators/"
 echo " Data/state   : $DATA"
-echo " VNC address  : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
+echo " VNC address  : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
 echo " VNC password : $(cat "$PASS_TXT" 2>/dev/null || true)"
 echo " Java         : $(java -version 2>&1 | head -n1)"
+echo " Supervisor   : NONE"
+echo " Watchdog     : NONE"
+echo " Autorestart  : OFF"
 echo "============================================================"
 
-shutdown() {
-  echo "[raven] stopping NRO..."
-  "$SCRIPT_DIR/nroctl.sh" stop >/dev/null 2>&1 || true
-  exit 0
-}
-trap shutdown INT TERM
-
-# A full Raven server restart normally restores the selected runtime.
-# If the selected files are missing/broken, keep the panel console alive
-# instead of boot-looping so the user can upload/fix files and select again.
-rm -f "$DISABLED_MARKER"
-if ! "$SCRIPT_DIR/nroctl.sh" start; then
-  echo "[raven] NRO stack did not start; console stays available."
-  echo "[raven] Upload/fix JARs, run 'list', then 'start <emulator> <game>'."
-  touch "$DISABLED_MARKER"
-fi
-
-watchdog_loop() {
-  while true; do
-    sleep 30
-
-    # Console "stop" intentionally pauses automatic recovery until "start",
-    # "restart", or a full Raven server restart.
-    if [[ -e "$DISABLED_MARKER" ]]; then
-      continue
-    fi
-
-    bad=0
-    if [[ ! -s "$DATA/vnc.pid" ]] || ! kill -0 "$(cat "$DATA/vnc.pid" 2>/dev/null)" 2>/dev/null; then
-      echo "[raven] VNC process is down"
-      bad=1
-    fi
-    if [[ ! -s "$DATA/game-supervisor.pid" ]] || ! kill -0 "$(cat "$DATA/game-supervisor.pid" 2>/dev/null)" 2>/dev/null; then
-      echo "[raven] game supervisor is down"
-      bad=1
-    fi
-
-    if [[ "$bad" -eq 1 ]]; then
-      echo "[raven] restarting full NRO stack..."
-      "$SCRIPT_DIR/nroctl.sh" restart || true
-    fi
-  done
-}
-
-watchdog_loop &
-WATCHDOG_PID=$!
 LIVE_LOG_PID=""
 
 stop_live_log() {
@@ -127,7 +81,19 @@ stop_live_log() {
   LIVE_LOG_PID=""
 }
 
-trap 'stop_live_log; kill "$WATCHDOG_PID" 2>/dev/null || true; shutdown' INT TERM
+shutdown() {
+  trap - INT TERM
+  stop_live_log
+  echo "[raven] stopping NRO..."
+  "$SCRIPT_DIR/nroctl.sh" stop >/dev/null 2>&1 || true
+  exit 0
+}
+trap shutdown INT TERM
+
+if ! "$SCRIPT_DIR/nroctl.sh" start; then
+  echo "[raven] NRO stack did not start; console stays available."
+  echo "[raven] Run 'list', then 'restart <emulator> <game>' after fixing files."
+fi
 
 print_help() {
   echo "Commands:"
@@ -135,26 +101,24 @@ print_help() {
   echo "  start [<emulator> <game>]"
   echo "  stop"
   echo "  restart [<emulator> <game>]"
+  echo "  game-restart"
   echo "  status"
   echo "  log | log-stop"
-  echo "  loop-check | game-restart"
   echo "  vnc | help"
   echo "  update              # pull latest GitHub runtime and reload"
   echo "  exit | shutdown     # stop everything and exit main server process"
-  echo "Example: restart MICRO_NST AUTO50_X1"
+  echo "Example: restart stock game.jar"
 }
 
 echo "[raven] Console ready."
 print_help
 
-# Raven sends panel console input to stdin of the main process. This is not a shell.
 while true; do
   if ! IFS= read -r cmd; then
     sleep 3600
     continue
   fi
 
-  # Split into simple whitespace-separated args. Never eval panel input.
   read -r -a parts <<< "$cmd"
   action="${parts[0]:-}"
   args=("${parts[@]:1}")
@@ -164,16 +128,18 @@ while true; do
       "$SCRIPT_DIR/nroctl.sh" list
       ;;
     start)
-      if "$SCRIPT_DIR/nroctl.sh" start "${args[@]}"; then
-        rm -f "$DISABLED_MARKER"
-      else
-        echo "[raven] start failed; watchdog state unchanged"
-      fi
+      "$SCRIPT_DIR/nroctl.sh" start "${args[@]}"
       ;;
     stop)
-      touch "$DISABLED_MARKER"
       stop_live_log
       "$SCRIPT_DIR/nroctl.sh" stop
+      ;;
+    restart|use)
+      stop_live_log
+      "$SCRIPT_DIR/nroctl.sh" restart "${args[@]}"
+      ;;
+    game-restart)
+      "$SCRIPT_DIR/nroctl.sh" game-restart
       ;;
     status)
       "$SCRIPT_DIR/nroctl.sh" status
@@ -190,31 +156,14 @@ while true; do
     log-stop)
       stop_live_log
       ;;
-    loop-check)
-      "$SCRIPT_DIR/nroctl.sh" loop-check
-      ;;
-    game-restart)
-      "$SCRIPT_DIR/nroctl.sh" game-restart
-      ;;
-    restart|use)
-      stop_live_log
-      echo "[raven] restarting NRO stack..."
-      if "$SCRIPT_DIR/nroctl.sh" restart "${args[@]}"; then
-        rm -f "$DISABLED_MARKER"
-      else
-        echo "[raven] restart failed; watchdog state unchanged"
-      fi
-      ;;
     vnc)
-      echo "VNC address : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
+      echo "VNC address : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
       echo "VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
       ;;
     update)
       echo "[raven] updating runtime from GitHub..."
       stop_live_log
-      touch "$DISABLED_MARKER"
       "$SCRIPT_DIR/nroctl.sh" stop >/dev/null 2>&1 || true
-      kill "$WATCHDOG_PID" 2>/dev/null || true
       if git -C "$REPO_ROOT" fetch --depth=1 origin main && git -C "$REPO_ROOT" reset --hard origin/main; then
         echo "[raven] update complete; reloading runtime..."
         exec bash "$REPO_ROOT/raven/start-raven.sh"
@@ -224,11 +173,7 @@ while true; do
       ;;
     exit|shutdown)
       echo "[raven] shutting down main server process..."
-      stop_live_log
-      touch "$DISABLED_MARKER"
-      "$SCRIPT_DIR/nroctl.sh" stop >/dev/null 2>&1 || true
-      kill "$WATCHDOG_PID" 2>/dev/null || true
-      exit 0
+      shutdown
       ;;
     help|"")
       print_help
