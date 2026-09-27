@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-WEB_PORT="${PORT:-${NOVNC_PORT:-8080}}"
+WEB_PORT="${PORT:-8080}"
 VNC_PORT="${VNC_PORT:-5900}"
 
-if [[ ! -s /data/game.jar ]]; then
-  echo "[web] /data/game.jar missing; opening uploader on port $WEB_PORT"
-  python3 /app/upload.py
-  echo "[web] game.jar uploaded"
-  /app/nroctl start game || true
-fi
-
-echo "[web] noVNC listening on 0.0.0.0:$WEB_PORT"
-
-while ! (echo >/dev/tcp/127.0.0.1/"$VNC_PORT") 2>/dev/null; do
-  echo "[web] waiting for VNC on 127.0.0.1:$VNC_PORT"
-  sleep 1
+echo "[web] waiting for VNC on 127.0.0.1:${VNC_PORT}"
+while ! (echo >/dev/tcp/127.0.0.1/"${VNC_PORT}") 2>/dev/null; do
+  sleep 0.25
 done
 
-exec websockify   --web=/usr/share/novnc   "0.0.0.0:$WEB_PORT"   "127.0.0.1:$VNC_PORT"
+echo "[web] noVNC ready on 0.0.0.0:${WEB_PORT}"
+echo "[web] open the Blitz public URL in a browser"
+
+exec /usr/bin/websockify \
+  --web=/app/novnc \
+  "0.0.0.0:${WEB_PORT}" \
+  "127.0.0.1:${VNC_PORT}"
