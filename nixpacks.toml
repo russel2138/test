@@ -1,5 +1,0 @@
-[phases.setup]
-aptPkgs = ["...", "xvfb", "x11vnc", "novnc", "websockify", "unzip", "curl", "ca-certificates"]
-
-[start]
-cmd = "bash modvc/start.sh"

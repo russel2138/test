@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-set -euo pipefail
-rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
-exec Xvfb :99 -screen 0 320x240x16 -nolisten tcp -noreset

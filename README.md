@@ -1,74 +1,57 @@
-# NRO + MicroEmulator on Blitz
+# NRO hosting
 
-App URL:
+Repo này chỉ giữ các target đang dùng:
+
+- **Blitz**: runtime Docker ở thư mục root.
+- **RavenHost / Pterodactyl Java**: runtime ở `raven/`.
+
+Zampto không có runtime riêng. Nếu cần test Zampto, dùng lại runtime `raven/` qua `raven/ptero-launcher.jar` và đặt tên file thành `server.jar`.
+
+## Blitz
+
+Blitz build trực tiếp từ root repo:
 
 ```text
-https://nro.pyoska.blitz.cloud
+Dockerfile
+start.sh
+run-display.sh
+run-game.sh
+run-web.sh
+run-tunnel.sh
+game.jar
 ```
 
-Startup command remains:
+Startup command:
 
 ```text
 /app/start.sh
 ```
 
-## Lightweight runtime
-
-The Blitz target now runs each component directly with no supervisor/watchdog loop:
+Runtime hiện tại:
 
 ```text
-display  -> Xvfb 320x240x16
-game     -> Java 17 + MicroEmulator 2.0.4
-vnc      -> x11vnc
-web      -> noVNC/websockify
+TigerVNC Xvnc : 400x340x16
+MicroEmulator : resizable device 400x300
+Java heap     : Xms 8m, Xmx 192m mặc định
+watchdog      : OFF
+autorestart   : OFF
+state         : /data/microemu-home/.microemulator
 ```
 
-Defaults:
+## RavenHost / Pterodactyl Java
+
+Xem `raven/README.md`.
+
+Launcher dùng chung:
 
 ```text
-JAVA_XMS=8m
-JAVA_XMX=128m
-Watchdog=OFF
-Automatic restart=OFF
+raven/ptero-launcher.jar
 ```
 
-If a component exits, it stays down until restarted manually.
-
-## Persistent data
-
-Game JAR:
+Launcher tự clone/pull branch `main` mỗi lần server start, sau đó chạy:
 
 ```text
-/data/game.jar
+raven/start-raven.sh
 ```
 
-RMS/login state:
-
-```text
-/data/microemu-home/.microemulator
-```
-
-If `/data/game.jar` is missing, the app URL opens the upload page. After a valid J2ME JAR is uploaded, the game is started once and the web endpoint switches to noVNC.
-
-## Controls
-
-```bash
-/app/nroctl status
-/app/nroctl start all
-/app/nroctl stop all
-/app/nroctl restart all
-
-/app/nroctl restart game
-/app/nroctl restart remote
-
-/app/nroctl log game
-/app/nroctl log web
-```
-
-`remote` means `vnc + web`.
-
-The VNC/upload password is persisted in:
-
-```text
-/data/vnc-password.txt
-```
+Game JAR và state không nằm trong Git; giữ ở `/home/container` và `/home/container/nro-data` trên host.

@@ -1,58 +1,89 @@
-# Raven Host runtime
+# RavenHost / Pterodactyl Java runtime
 
-Raven keeps its default Java startup command and launches `sneakyhub.jar` from `/home/container`.
-The launcher clones/pulls this repository on every server start, then runs `raven/start-raven.sh`.
+Thư mục này là runtime cho RavenHost và các host Pterodactyl Java tương thích.
 
-The runtime stays backward-compatible with the original setup:
+## Launcher
+
+File dùng chung:
+
+```text
+ptero-launcher.jar
+```
+
+Launcher tương thích Java 8+, tự clone/pull:
+
+```text
+https://github.com/russel2138/test.git
+```
+
+vào:
+
+```text
+/home/container/.nro-raven-src
+```
+
+rồi chạy:
+
+```text
+raven/start-raven.sh
+```
+
+Tên JAR trên từng host có thể khác nhau:
+
+```text
+RavenHost:  sneakyhub.jar   (nếu egg đang cố định tên này)
+Zampto:     server.jar      (Minecraft Java Generic)
+```
+
+Chỉ cần đổi tên cùng một `ptero-launcher.jar`; không cần fork runtime riêng cho từng host.
+
+## Persistent files
+
+Game mặc định:
 
 ```text
 /home/container/game.jar
 ```
 
-with the stock MicroEmulator and the existing RMS/login state under:
+Game bổ sung:
 
 ```text
-/home/container/nro-data/microemu-home/
+/home/container/games/*.jar
 ```
 
-## Multiple emulator/game JARs
-
-Upload your own JARs outside Git:
+Emulator bổ sung:
 
 ```text
-/home/container/
-|-- sneakyhub.jar
-|-- game.jar                  # optional legacy/default game
-|-- games/
-|   |-- AUTO50_X1.jar
-|   `-- another-game.jar
-|-- emulators/
-|   |-- MICRO_NST.jar
-|   `-- another-emulator.jar
-|-- .nro-raven-src/          # auto-cloned by launcher
-`-- nro-data/                # persistent runtime/state
+/home/container/emulators/*.jar
 ```
 
-Uploaded emulator JARs must be MicroEmulator-compatible (`org.microemu.app.Main`).
-The game MIDlet class is detected automatically from `META-INF/MANIFEST.MF`.
+State:
 
-Each non-legacy emulator/game pair gets its own persistent state:
+```text
+/home/container/nro-data/
+```
+
+Không xóa `nro-data/` khi update launcher hoặc scripts.
+
+## Runtime selection
+
+Uploaded emulator JAR phải tương thích MicroEmulator (`org.microemu.app.Main`). MIDlet class được đọc tự động từ `META-INF/MANIFEST.MF`.
+
+Mỗi cặp game/emulator riêng có state riêng:
 
 ```text
 /home/container/nro-data/profiles/<game>/<emulator>/.microemulator/
 ```
 
-The selected pair is remembered in:
+Selection hiện tại:
 
 ```text
 /home/container/nro-data/current-selection.env
 ```
 
-## Raven console
+## Panel console commands
 
-The Raven panel console is stdin for `start-raven.sh`; it is not a shell.
-
-Commands:
+Panel console là stdin của runtime, **không phải shell**.
 
 ```text
 list
@@ -69,9 +100,6 @@ vnc
 help
 ```
 
-`restart <emulator> <game>` switches to that pair and remembers it.
-`restart` without arguments restarts the current pair.
+`restart <emulator> <game>` đổi runtime và ghi nhớ selection.
 
-`stop` intentionally pauses the stack watchdog until `start`, `restart`, or a full Raven server restart.
-
-The launcher repository is `russel2138/test`, branch `main`.
+`stop` tạm dừng stack cho tới `start`, `restart`, hoặc full server restart.
