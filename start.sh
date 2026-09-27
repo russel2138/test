@@ -24,6 +24,12 @@ echo "============================================================"
 /app/nroctl start game
 /app/nroctl status
 
+# Blitz has no interactive terminal. Stream the game log to the platform
+# runtime log so startup/runtime errors are visible from the dashboard.
+touch /tmp/nro-game.log
+tail -n 0 -F /tmp/nro-game.log &
+LOG_TAIL_PID=$!
+
 # Keep the Blitz worker process alive only. This never checks or restarts
 # the game/display. If either dies, it stays down until manually restarted.
 while true; do
