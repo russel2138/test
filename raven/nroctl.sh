@@ -452,7 +452,6 @@ start_vnc() {
     -geometry "$VNC_GEOMETRY" \
     -depth 24 \
     -rfbport "$VNC_PORT" \
-    -localhost no \
     -SecurityTypes VncAuth \
     -rfbauth "$VNC_PASS" \
     -xkbdir "$XKBDIR" \
