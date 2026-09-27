@@ -18,7 +18,7 @@ DISPLAY_NUM="${DISPLAY_NUM:-:99}"
 VNC_PORT="${VNC_PORT:-5900}"
 HTTP_PORT="${PORT:-3000}"
 JAVA_XMS="${JAVA_XMS:-16m}"
-JAVA_XMX="${JAVA_XMX:-160m}"
+JAVA_XMX="${JAVA_XMX:-128m}"
 
 NOVNC_SYSTEM="/usr/share/novnc"
 NOVNC_WEB="$DATA/novnc-web"
@@ -101,7 +101,7 @@ if [[ -n "${VNC_PASSWORD:-}" ]]; then
   printf '%s\n' "$VNC_PASSWORD" > "$VNC_PASS_FILE.plain"
 else
   if [[ ! -s "$VNC_PASS_FILE.plain" ]]; then
-    pass="$(printf '%s' "$(date +%s%N)-$RANDOM-$RANDOM" | sha256sum | cut -c1-12)"
+    pass="$(printf '%s' "$(date +%s%N)-$RANDOM-$RANDOM" | sha256sum | cut -c1-8)"
     printf '%s\n' "$pass" > "$VNC_PASS_FILE.plain"
   fi
 fi
