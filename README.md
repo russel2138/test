@@ -2,58 +2,73 @@
 
 App URL:
 
-```
+```text
 https://nro.pyoska.blitz.cloud
 ```
 
-No Cloudflare tunnel is used.
+Startup command remains:
 
-## Persistent game and login state
-
-The game JAR is **not stored in Git**.
-
-Runtime JAR:
-
+```text
+/app/start.sh
 ```
+
+## Lightweight runtime
+
+The Blitz target now runs each component directly with no supervisor/watchdog loop:
+
+```text
+display  -> Xvfb 320x240x16
+game     -> Java 17 + MicroEmulator 2.0.4
+vnc      -> x11vnc
+web      -> noVNC/websockify
+```
+
+Defaults:
+
+```text
+JAVA_XMS=8m
+JAVA_XMX=128m
+Watchdog=OFF
+Automatic restart=OFF
+```
+
+If a component exits, it stays down until restarted manually.
+
+## Persistent data
+
+Game JAR:
+
+```text
 /data/game.jar
 ```
 
 RMS/login state:
 
-```
+```text
 /data/microemu-home/.microemulator
 ```
 
-If `/data/game.jar` already exists, it is used as-is and is never overwritten by deploys.
+If `/data/game.jar` is missing, the app URL opens the upload page. After a valid J2ME JAR is uploaded, the game is started once and the web endpoint switches to noVNC.
 
-If it is missing, the app URL temporarily shows a password-protected upload page. Upload a valid J2ME JAR there; it is saved atomically as `/data/game.jar`. The game supervisor then starts it automatically and the same URL switches back to noVNC.
-
-## Runtime
-
-```
-Blitz address
-  -> noVNC/websockify
-  -> x11vnc
-  -> Xvfb
-  -> MicroEmulator + /data/game.jar
-```
-
-Components are independent:
-
-```
-display  -> Xvfb
-game     -> Java + MicroEmulator
-vnc      -> x11vnc
-web      -> uploader when JAR is missing, otherwise noVNC/websockify
-```
-
-Useful commands:
+## Controls
 
 ```bash
 /app/nroctl status
+/app/nroctl start all
+/app/nroctl stop all
+/app/nroctl restart all
+
+/app/nroctl restart game
+/app/nroctl restart remote
+
 /app/nroctl log game
 /app/nroctl log web
-/app/nroctl restart game
 ```
 
-VNC/upload password is persisted in `/data/vnc-password.txt`, or can be supplied with `VNC_PASSWORD`.
+`remote` means `vnc + web`.
+
+The VNC/upload password is persisted in:
+
+```text
+/data/vnc-password.txt
+```
