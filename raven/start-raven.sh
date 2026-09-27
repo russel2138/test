@@ -139,6 +139,8 @@ print_help() {
   echo "  log | log-stop"
   echo "  loop-check | game-restart"
   echo "  vnc | help"
+  echo "  update              # pull latest GitHub runtime and reload"
+  echo "  exit | shutdown     # stop everything and exit main server process"
   echo "Example: restart MICRO_NST AUTO50_X1"
 }
 
@@ -206,6 +208,27 @@ while true; do
     vnc)
       echo "VNC address : ${SERVER_IP:-tex.ravenhost.space}:$VNC_PORT"
       echo "VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
+      ;;
+    update)
+      echo "[raven] updating runtime from GitHub..."
+      stop_live_log
+      touch "$DISABLED_MARKER"
+      "$SCRIPT_DIR/nroctl.sh" stop >/dev/null 2>&1 || true
+      kill "$WATCHDOG_PID" 2>/dev/null || true
+      if git -C "$REPO_ROOT" fetch --depth=1 origin main && git -C "$REPO_ROOT" reset --hard origin/main; then
+        echo "[raven] update complete; reloading runtime..."
+        exec bash "$REPO_ROOT/raven/start-raven.sh"
+      else
+        echo "[raven] update failed; runtime remains stopped" >&2
+      fi
+      ;;
+    exit|shutdown)
+      echo "[raven] shutting down main server process..."
+      stop_live_log
+      touch "$DISABLED_MARKER"
+      "$SCRIPT_DIR/nroctl.sh" stop >/dev/null 2>&1 || true
+      kill "$WATCHDOG_PID" 2>/dev/null || true
+      exit 0
       ;;
     help|"")
       print_help
