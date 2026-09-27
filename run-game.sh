@@ -48,12 +48,12 @@ echo "[game] MicroEmulator 2.0.4"
 echo "[game] jar: $GAME_JAR"
 echo "[game] state: $MICROEMU_STATE_ROOT"
 echo "[game] MIDlet: $MIDLET_CLASS"
-echo "[game] heap: 8m -> ${JAVA_XMX:-128m}"
+echo "[game] heap: 8m -> ${JAVA_XMX:-192m}"
 echo "[game] watchdog: OFF"
 
 exec "$JAVA_BIN" \
   -Xms8m \
-  -Xmx"${JAVA_XMX:-128m}" \
+  -Xmx"${JAVA_XMX:-192m}" \
   -XX:+UseSerialGC \
   -Djava.awt.headless=false \
   -Duser.home="$MICROEMU_USER_HOME" \
