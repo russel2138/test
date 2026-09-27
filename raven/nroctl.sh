@@ -383,7 +383,7 @@ start_game() {
   rm -f "$GAME_PID"
   : > "$GAME_LOG"
 
-  echo "[GAME] starting directly (no supervisor, no watchdog, no autorestart)"
+  echo "[GAME] starting directly (manual restart only)"
   DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   nohup java     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
@@ -464,8 +464,6 @@ status() {
   port_listening && echo "[ON]  VNC port         :$VNC_PORT LISTEN" || echo "[OFF] VNC port         :$VNC_PORT"
   [[ -n "$gpid" ]] && echo "[ON]  Game Java        pid=$gpid" || echo "[OFF] Game Java"
   [[ -s "$GAME" ]] && echo "[ON]  game.jar         $GAME" || echo "[OFF] game.jar"
-  echo "Supervisor:          NONE"
-  echo "Watchdog:            NONE"
   echo "Autorestart:         OFF"
   echo "State:               $STATE"
   echo "============================================"
