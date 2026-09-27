@@ -25,11 +25,21 @@ jobs:
           docker run --rm             -v "$out:/bundle"             ubuntu:24.04             bash -lc '
               set -euo pipefail
               export DEBIAN_FRONTEND=noninteractive
+
               apt-get update
-              apt-get -y --download-only --no-install-recommends install                 tigervnc-standalone-server tigervnc-tools x11-xkb-utils xkb-data xfonts-base                 fonts-dejavu-core libx11-6 libxext6 libxi6 libxrender1 libxtst6                 libxrandr2 libxfixes3 libxinerama1 libxcb1 libxau6 libxdmcp6                 ca-certificates curl unzip
+
+              # Build-only tools inside GitHub Actions. These are NOT needed
+              # on Wispbyte and are intentionally not part of the runtime.
+              apt-get install -y --no-install-recommends ca-certificates curl unzip
+
+              # Download the complete TigerVNC dependency closure into the
+              # clean Ubuntu 24.04 container cache.
+              apt-get -y --download-only --no-install-recommends install                 tigervnc-standalone-server tigervnc-tools x11-xkb-utils xkb-data xfonts-base                 fonts-dejavu-core libx11-6 libxext6 libxi6 libxrender1 libxtst6                 libxrandr2 libxfixes3 libxinerama1 libxcb1 libxau6 libxdmcp6
+
               for deb in /var/cache/apt/archives/*.deb; do
                 dpkg-deb -x "$deb" /bundle
               done
+
               mkdir -p /bundle/microemu /tmp/microemu
               curl -fL --retry 4                 https://downloads.sourceforge.net/project/microemulator/microemulator/2.0.4/microemulator-2.0.4.zip                 -o /tmp/microemu.zip
               unzip -q /tmp/microemu.zip -d /tmp/microemu
