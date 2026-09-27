@@ -16,14 +16,13 @@ shutdown() {
 trap shutdown INT TERM
 
 echo "============================================================"
-echo " NRO / Blitz background + native VNC"
+echo " NRO / Blitz background + Quick Tunnel"
 echo " game       : /app/game.jar"
 echo " state      : /data/microemu-home/.microemulator"
 echo " heap       : 8m -> ${JAVA_XMX:-128m}"
 echo " display    : TigerVNC Xvnc 320x240x16"
-echo " VNC        : 127.0.0.1:${VNC_PORT:-5900}"
-echo " tunnel     : Cloudflare Named Tunnel (fixed hostname)"
-echo " Blitz type : BACKGROUND"
+echo " browser    : noVNC via random *.trycloudflare.com"
+echo " game logs  : hidden from Blitz Logs"
 echo " watchdog   : OFF"
 echo " autorestart: OFF"
 echo "============================================================"
@@ -31,7 +30,11 @@ echo "============================================================"
 /app/run-display.sh &
 PIDS+=($!)
 
-/app/run-game.sh &
+# Keep noisy game stdout/stderr out of Blitz Logs.
+/app/run-game.sh >/tmp/nro-game.log 2>&1 &
+PIDS+=($!)
+
+/app/run-web.sh &
 PIDS+=($!)
 
 /app/run-tunnel.sh &
@@ -40,11 +43,10 @@ PIDS+=($!)
 sleep 1
 
 echo "[status] display pid=${PIDS[0]}"
-echo "[status] game    pid=${PIDS[1]}"
-echo "[status] tunnel  pid=${PIDS[2]}"
-if [[ -n "${TUNNEL_HOSTNAME:-}" ]]; then
-  echo "[status] fixed VNC hostname: ${TUNNEL_HOSTNAME}"
-fi
+echo "[status] game    pid=${PIDS[1]} (logs hidden)"
+echo "[status] web     pid=${PIDS[2]}"
+echo "[status] tunnel  pid=${PIDS[3]}"
+echo "[status] open the https://*.trycloudflare.com URL printed by cloudflared"
 
-# No supervisor/watchdog/restart loop. Blitz remains a background worker.
+# No supervisor/watchdog/restart loop.
 wait
