@@ -13,7 +13,7 @@ mkdir -p "$DATA"
 fetch() {
   local url="$1" out="$2"
   if command -v curl >/dev/null 2>&1; then
-    curl -fL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 20 "$url" -o "$out"
+    curl -fL --retry 5 --retry-delay 2 --connect-timeout 20 "$url" -o "$out"
   elif command -v wget >/dev/null 2>&1; then
     wget --tries=5 --timeout=20 -O "$out" "$url"
   else
