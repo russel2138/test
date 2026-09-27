@@ -29,7 +29,7 @@ jobs:
           mkdir -p build
           javac --release 17 -d build witchly/SneakyHub.java
           jar cfe sneakyhub.jar SneakyHub -C build SneakyHub.class
-          java -jar sneakyhub.jar --help >/tmp/launcher-smoke.log 2>&1 || true
+          jar tf sneakyhub.jar | grep -q "^SneakyHub.class$"
           ls -lh sneakyhub.jar
           sha256sum sneakyhub.jar > sneakyhub.jar.sha256
 
