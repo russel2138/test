@@ -154,8 +154,15 @@ public final class SneakyHub {
     private static void printVnc() {
         String host = System.getenv().getOrDefault(
             "SERVER_IP",
-            System.getenv().getOrDefault("P_SERVER_IP", "<Witchly public IP/host>")
+            System.getenv().getOrDefault("P_SERVER_IP", "")
         );
+        if (host.isBlank() || "0.0.0.0".equals(host) || "::".equals(host)) {
+            host = detectPublicIp();
+        }
+        if (host == null || host.isBlank()) {
+            host = "<public IP unavailable>";
+        }
+
         String port = readText(VNC_PORT,
             System.getenv().getOrDefault("SERVER_PORT", "-"));
         String pass = readText(VNC_PASS, "-");
@@ -186,6 +193,38 @@ public final class SneakyHub {
         } catch (Exception e) {
             return fallback;
         }
+    }
+
+    private static String detectPublicIp() {
+        String[] urls = {
+            "https://api.ipify.org",
+            "https://ifconfig.me/ip"
+        };
+
+        for (String url : urls) {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                conn.setConnectTimeout(5_000);
+                conn.setReadTimeout(5_000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", "sneakyhub-witchly/3");
+
+                int code = conn.getResponseCode();
+                if (code >= 200 && code < 300) {
+                    try (InputStream in = conn.getInputStream()) {
+                        String value = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
+                        if (!value.isBlank()) return value;
+                    } finally {
+                        conn.disconnect();
+                    }
+                } else {
+                    conn.disconnect();
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        return "";
     }
 
     private static void download(String url, Path target) throws Exception {
