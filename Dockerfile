@@ -21,6 +21,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
       openjdk-17-jre \
       xvfb \
+      unzip \
       fonts-dejavu-core fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
