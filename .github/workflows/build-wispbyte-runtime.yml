@@ -66,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="wispbyte-runtime-v1"
-          if gh release view "$tag" >/dev/null 2>&1; then
+          if gh release view "$tag" --repo russel2138/test >/dev/null 2>&1; then
             gh release upload "$tag"               wispbyte-runtime-noble-amd64.tar.gz               wispbyte-runtime-noble-amd64.tar.gz.sha256               --clobber
           else
             gh release create "$tag"               wispbyte-runtime-noble-amd64.tar.gz               wispbyte-runtime-noble-amd64.tar.gz.sha256               --title "Wispbyte NRO runtime v1"               --notes "Prebuilt Ubuntu 24.04 amd64 MicroEmulator + TigerVNC runtime for the Wispbyte target."
