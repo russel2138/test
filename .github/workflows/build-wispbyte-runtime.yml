@@ -49,9 +49,9 @@ jobs:
           test -s "$out/usr/share/X11/xkb/keycodes/evdev"
           test -s "$out/microemu/microemulator.jar"
 
-          tar -C "$out" -czf wispbyte-runtime-noble-amd64.tar.gz .
-          sha256sum wispbyte-runtime-noble-amd64.tar.gz > wispbyte-runtime-noble-amd64.tar.gz.sha256
-          ls -lh wispbyte-runtime-noble-amd64.tar.gz
+          tar -C "$out" -czf wispbyte-runtime-noble-amd64.tar .
+          sha256sum wispbyte-runtime-noble-amd64.tar > wispbyte-runtime-noble-amd64.tar.sha256
+          ls -lh wispbyte-runtime-noble-amd64.tar
           du -sh "$out"
 
       - name: Publish runtime release
@@ -64,7 +64,7 @@ jobs:
           repo="russel2138/test"
 
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            gh release upload "$tag"               wispbyte-runtime-noble-amd64.tar.gz               wispbyte-runtime-noble-amd64.tar.gz.sha256               --repo "$repo"               --clobber
+            gh release upload "$tag"               wispbyte-runtime-noble-amd64.tar               wispbyte-runtime-noble-amd64.tar.sha256               --repo "$repo"               --clobber
           else
-            gh release create "$tag"               wispbyte-runtime-noble-amd64.tar.gz               wispbyte-runtime-noble-amd64.tar.gz.sha256               --repo "$repo"               --title "Wispbyte NRO runtime v1"               --notes "Prebuilt Ubuntu 24.04 amd64 MicroEmulator + TigerVNC runtime for the Wispbyte target."
+            gh release create "$tag"               wispbyte-runtime-noble-amd64.tar               wispbyte-runtime-noble-amd64.tar.sha256               --repo "$repo"               --title "Wispbyte NRO runtime v1"               --notes "Prebuilt Ubuntu 24.04 amd64 MicroEmulator + TigerVNC runtime for the Wispbyte target."
           fi
