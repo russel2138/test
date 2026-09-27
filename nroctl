@@ -5,14 +5,13 @@ RUNDIR=/run/nro
 LOGDIR=/tmp
 mkdir -p "$RUNDIR"
 
-components=(display vnc web game)
+components=(display game)
 
 valid_component() {
-  local wanted="$1" c
-  for c in "${components[@]}"; do
-    [[ "$c" == "$wanted" ]] && return 0
-  done
-  return 1
+  case "$1" in
+    display|game) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 pidfile() {
@@ -48,7 +47,7 @@ start_one() {
   fi
 
   echo "[$c] failed to start; see $LOGDIR/nro-$c.log" >&2
-  tail -n 40 "$LOGDIR/nro-$c.log" 2>/dev/null || true
+  tail -n 80 "$LOGDIR/nro-$c.log" 2>/dev/null || true
   rm -f "$file"
   return 1
 }
@@ -56,8 +55,8 @@ start_one() {
 stop_one() {
   local c="$1" file p=""
   file="$(pidfile "$c")"
-
   [[ -s "$file" ]] && p="$(cat "$file" 2>/dev/null || true)"
+
   if [[ -n "$p" ]]; then
     kill "$p" 2>/dev/null || true
     for _ in {1..15}; do
@@ -82,48 +81,35 @@ status_one() {
 }
 
 status_all() {
-  local c
-  echo "=== NRO STATUS ==="
-  for c in "${components[@]}"; do
-    status_one "$c"
-  done
+  echo "=== NRO / BLITZ ==="
+  status_one display
+  status_one game
   echo
-  [[ -s /data/game.jar ]] && echo "game.jar : OK ($(stat -c%s /data/game.jar 2>/dev/null || echo '?') bytes)" || echo "game.jar : MISSING"
+  echo "game     : /app/game.jar ($(stat -c%s /app/game.jar 2>/dev/null || echo '?') bytes)"
   echo "state    : /data/microemu-home/.microemulator"
-  echo "web      : https://nro.pyoska.blitz.cloud"
-  [[ -s /data/vnc-password.txt ]] && echo "vnc pass : $(head -n1 /data/vnc-password.txt)"
   echo "watchdog : OFF"
   echo "restart  : manual only"
 }
 
 start_all() {
   start_one display || true
-  start_one vnc || true
-  start_one web || true
-  if [[ -s /data/game.jar ]]; then
-    start_one game || true
-  else
-    echo "[game] skipped: /data/game.jar missing"
-  fi
+  start_one game || true
 }
 
 stop_all() {
   stop_one game
-  stop_one web
-  stop_one vnc
   stop_one display
 }
 
 usage() {
   cat <<'EOF'
 Usage:
-  nroctl status
-  nroctl start   <display|game|vnc|web|all|remote>
-  nroctl stop    <display|game|vnc|web|all|remote>
-  nroctl restart <display|game|vnc|web|all|remote>
-  nroctl log     <display|game|vnc|web>
+  /app/nroctl status
+  /app/nroctl start   <display|game|all>
+  /app/nroctl stop    <display|game|all>
+  /app/nroctl restart <display|game|all>
+  /app/nroctl log     <display|game>
 
-remote = vnc + web
 No watchdog. No automatic restart loop.
 EOF
 }
@@ -131,37 +117,32 @@ EOF
 action="${1:-status}"
 target="${2:-all}"
 
-expand_targets() {
-  case "$1" in
-    all) printf '%s\n' display vnc web game ;;
-    remote) printf '%s\n' vnc web ;;
-    *) valid_component "$1" && printf '%s\n' "$1" || return 1 ;;
-  esac
-}
-
 case "$action" in
   status)
-    if [[ "${2:-}" != "" && "${2:-}" != "all" ]]; then
-      valid_component "$2" || { usage; exit 2; }
-      status_one "$2"
-    else
+    if [[ "$target" == "all" ]]; then
       status_all
+    elif valid_component "$target"; then
+      status_one "$target"
+    else
+      usage; exit 2
     fi
     ;;
   start)
     if [[ "$target" == "all" ]]; then
       start_all
+    elif valid_component "$target"; then
+      start_one "$target"
     else
-      mapfile -t targets < <(expand_targets "$target") || { usage; exit 2; }
-      for c in "${targets[@]}"; do start_one "$c"; done
+      usage; exit 2
     fi
     ;;
   stop)
     if [[ "$target" == "all" ]]; then
       stop_all
+    elif valid_component "$target"; then
+      stop_one "$target"
     else
-      mapfile -t targets < <(expand_targets "$target") || { usage; exit 2; }
-      for c in "${targets[@]}"; do stop_one "$c"; done
+      usage; exit 2
     fi
     ;;
   restart)
@@ -169,9 +150,11 @@ case "$action" in
       stop_all
       sleep 0.5
       start_all
+    elif valid_component "$target"; then
+      stop_one "$target"
+      start_one "$target"
     else
-      mapfile -t targets < <(expand_targets "$target") || { usage; exit 2; }
-      for c in "${targets[@]}"; do stop_one "$c"; start_one "$c"; done
+      usage; exit 2
     fi
     ;;
   log|logs)
