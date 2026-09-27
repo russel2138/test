@@ -5,7 +5,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     DISPLAY=:99 \
     NOVNC_PORT=8080 \
     VNC_PORT=5900 \
-    JAVA_XMX=160m
+    JAVA_XMX=128m
 
 # Lightweight runtime:
 # - Xvfb: virtual X display required by MicroEmulator/AWT
@@ -13,7 +13,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # - noVNC + websockify: browser access through Blitz's own app address
 # - Java 17: MicroEmulator runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates wget unzip \
+      ca-certificates wget unzip python3-minimal \
       openjdk-17-jre \
       xvfb x11vnc websockify \
       fonts-dejavu-core fontconfig \
@@ -44,7 +44,6 @@ RUN set -eux; \
     mkdir -p /app /data /run/nro /home/app; \
     chown -R 1000:1000 /app /data /run/nro /home/app
 
-COPY --chown=1000:1000 supervise.sh /app/supervise.sh
 COPY --chown=1000:1000 run-display.sh /app/run-display.sh
 COPY --chown=1000:1000 run-game.sh /app/run-game.sh
 COPY --chown=1000:1000 run-vnc.sh /app/run-vnc.sh
