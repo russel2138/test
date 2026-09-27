@@ -16,12 +16,13 @@ shutdown() {
 trap shutdown INT TERM
 
 echo "============================================================"
-echo " NRO / Blitz browser"
+echo " NRO / Blitz background"
 echo " game       : /app/game.jar"
 echo " state      : /data/microemu-home/.microemulator"
 echo " heap       : 8m -> ${JAVA_XMX:-128m}"
 echo " display    : TigerVNC Xvnc 320x240x16"
-echo " browser    : noVNC -> ${PORT:-8080}"
+echo " browser    : Cloudflare Quick Tunnel -> internal noVNC"
+echo " Blitz type : BACKGROUND (no Blitz public address)"
 echo " watchdog   : OFF"
 echo " autorestart: OFF"
 echo "============================================================"
@@ -35,13 +36,16 @@ PIDS+=($!)
 /app/run-web.sh &
 PIDS+=($!)
 
+/app/run-tunnel.sh &
+PIDS+=($!)
+
 sleep 1
 
 echo "[status] display pid=${PIDS[0]}"
 echo "[status] game    pid=${PIDS[1]}"
 echo "[status] web     pid=${PIDS[2]}"
-echo "[status] open the Blitz public URL to control the game"
+echo "[status] tunnel  pid=${PIDS[3]}"
+echo "[status] browser URL is printed by cloudflared below/above"
 
-# No supervisor and no restart loop. If the game exits it stays down.
-# PID 1 only remains alive to own the three child processes and handle SIGTERM.
+# No supervisor/watchdog/restart loop. Blitz remains a background worker.
 wait
