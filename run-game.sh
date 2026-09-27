@@ -61,7 +61,7 @@ exec "$JAVA_BIN" \
   -cp "$CP" \
   org.microemu.app.Main \
   --rms file \
-  --resizableDevice 240 200 \
+  --resizableDevice 320 240 \
   --appclasspath "$GAME_JAR" \
   --propertiesjad "$GAME_PROPERTIES" \
   --quit \
