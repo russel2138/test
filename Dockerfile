@@ -19,8 +19,8 @@ RUN wget -q -O /tmp/novnc.tar.gz \
       "https://github.com/novnc/noVNC/archive/refs/tags/${NOVNC_VERSION}.tar.gz" \
     && mkdir -p /opt/novnc \
     && tar -xzf /tmp/novnc.tar.gz --strip-components=1 -C /opt/novnc \
-    && cp /opt/novnc/vnc_lite.html /opt/novnc/index.html \
-    && sed -i "s/readQueryVariable('scale', false)/readQueryVariable('scale', true)/" /opt/novnc/index.html
+    && cp /opt/novnc/vnc.html /opt/novnc/index.html \
+    && printf '%s\n' '{"autoconnect":true,"resize":"scale","path":"websockify","shared":true,"reconnect":true,"reconnect_delay":1000}' > /opt/novnc/defaults.json
 
 RUN wget -q -O /opt/cloudflared \
       "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${TARGETARCH}" \
