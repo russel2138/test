@@ -166,6 +166,12 @@ resolve_emulator() {
         echo "[ERROR] Emulator is not MicroEmulator-compatible: $candidate" >&2
         return 1
       }
+  elif command -v jar >/dev/null 2>&1; then
+    jar tf "$candidate" 2>/dev/null |
+      grep -qx 'org/microemu/app/Main.class' || {
+        echo "[ERROR] Emulator is not MicroEmulator-compatible: $candidate" >&2
+        return 1
+      }
   fi
 
   EMU_JAR="$candidate"
@@ -194,16 +200,34 @@ resolve_game() {
   GAME_NAME="$(basename "$GAME")"
 }
 
+read_game_manifest() {
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -p "$GAME" META-INF/MANIFEST.MF 2>/dev/null
+    return $?
+  fi
+
+  if command -v jar >/dev/null 2>&1; then
+    local tmp
+    tmp="$(mktemp -d "$DATA/.manifest.XXXXXX")" || return 1
+    (
+      cd "$tmp"
+      jar xf "$GAME" META-INF/MANIFEST.MF >/dev/null 2>&1
+      cat META-INF/MANIFEST.MF
+    )
+    local rc=$?
+    rm -rf "$tmp"
+    return $rc
+  fi
+
+  echo "[ERROR] Neither unzip nor jar is available to inspect the game JAR" >&2
+  return 1
+}
+
 detect_midlet() {
   local unfolded line cls
 
-  command -v unzip >/dev/null 2>&1 || {
-    echo "[ERROR] unzip is required to inspect the game JAR" >&2
-    return 1
-  }
-
   unfolded="$(
-    unzip -p "$GAME" META-INF/MANIFEST.MF 2>/dev/null |
+    read_game_manifest |
       tr -d '\r' |
       awk '
         /^[ ]/ {
@@ -378,9 +402,11 @@ prepare() {
   [[ -s "$EMU_JAR" ]] || { echo "[ERROR] Missing emulator: $EMU_JAR"; return 1; }
   [[ -s "$VNC_PASS" ]] || { echo "[ERROR] Missing VNC password file: $VNC_PASS"; return 1; }
 
-  if command -v unzip >/dev/null 2>&1; then
-    unzip -p "$GAME" META-INF/MANIFEST.MF 2>/dev/null | tr -d '\r' > "$JAD.tmp" || true
-    if [[ -s "$JAD.tmp" ]]; then mv -f "$JAD.tmp" "$JAD"; else rm -f "$JAD.tmp"; fi
+  read_game_manifest 2>/dev/null | tr -d '\r' > "$JAD.tmp" || true
+  if [[ -s "$JAD.tmp" ]]; then
+    mv -f "$JAD.tmp" "$JAD"
+  else
+    rm -f "$JAD.tmp"
   fi
 
   if [[ ! -e "$STATE/suite-null" && ! -L "$STATE/suite-null" ]]; then
