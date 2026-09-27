@@ -12,12 +12,27 @@ mkdir -p "$DATA" "$DATA/.vnc" "$DATA/microemu-home/.microemulator/suite-null"
 chmod +x "$SCRIPT_DIR/bootstrap-runtime.sh" "$SCRIPT_DIR/nroctl.sh"
 "$SCRIPT_DIR/bootstrap-runtime.sh"
 
-# First boot convenience for fresh Pterodactyl hosts: seed the default game
-# from the checked-out repo only when the host does not already have one.
+# Fresh Pterodactyl hosts may contain only server.jar. Seed the default game
+# from the checked-out repository, while never overwriting a user's own game.
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [[ ! -s "$ROOT/game.jar" && -s "$REPO_ROOT/game.jar" ]]; then
-  echo "[raven] seeding default game.jar from repository"
-  cp "$REPO_ROOT/game.jar" "$ROOT/game.jar"
+REPO_GAME="$REPO_ROOT/game.jar"
+echo "[raven] repo game   : $REPO_GAME"
+echo "[raven] host game   : $ROOT/game.jar"
+if [[ ! -s "$ROOT/game.jar" ]]; then
+  if [[ -s "$REPO_GAME" ]]; then
+    echo "[raven] seeding default game.jar from repository ($(wc -c < "$REPO_GAME") bytes)"
+    cp -f "$REPO_GAME" "$ROOT/game.jar"
+    sync "$ROOT/game.jar" 2>/dev/null || true
+    if [[ ! -s "$ROOT/game.jar" ]]; then
+      echo "[raven] ERROR: copy completed but host game.jar is still missing" >&2
+      exit 1
+    fi
+    echo "[raven] host game ready ($(wc -c < "$ROOT/game.jar") bytes)"
+  else
+    echo "[raven] ERROR: repository game.jar missing at $REPO_GAME" >&2
+  fi
+else
+  echo "[raven] keeping existing host game.jar ($(wc -c < "$ROOT/game.jar") bytes)"
 fi
 
 VNC_LIB="$DATA/vnc/usr/lib/x86_64-linux-gnu:$DATA/vnc/lib/x86_64-linux-gnu:$DATA/vnc/usr/lib"
