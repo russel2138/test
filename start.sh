@@ -9,35 +9,23 @@ shutdown() {
 }
 trap shutdown INT TERM
 
-WEB_PORT="${PORT:-${NOVNC_PORT:-8080}}"
-
 echo "============================================================"
-echo " NRO / Blitz lightweight"
-echo " game      : /data/game.jar"
-echo " state     : /data/microemu-home/.microemulator"
-echo " web port  : $WEB_PORT"
-echo " web       : https://nro.pyoska.blitz.cloud"
-echo " watchdog  : OFF"
+echo " NRO / Blitz background"
+echo " game       : /app/game.jar (bundled from GitHub)"
+echo " state      : /data/microemu-home/.microemulator"
+echo " heap       : 8m -> ${JAVA_XMX:-128m}"
+echo " display    : Xvfb 320x240x16"
+echo " watchdog   : OFF"
 echo " autorestart: OFF"
-echo " control   : /app/nroctl"
+echo " control    : /app/nroctl"
 echo "============================================================"
 
-# Independent processes, started once. If one dies it stays down until
-# /app/nroctl start|restart <component> is run manually.
 /app/nroctl start display
-/app/nroctl start vnc
-/app/nroctl start web
-
-if [[ -s /data/game.jar ]]; then
-  /app/nroctl start game
-else
-  echo "[game] /data/game.jar missing; uploader is available at the app URL"
-fi
-
+/app/nroctl start game
 /app/nroctl status
 
-# Keep only the Blitz main process alive. This loop does not inspect or
-# restart any component.
+# Keep the Blitz worker process alive only. This never checks or restarts
+# the game/display. If either dies, it stays down until manually restarted.
 while true; do
   sleep 3600 &
   wait $!
