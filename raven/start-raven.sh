@@ -11,6 +11,13 @@ mkdir -p "$DATA" "$DATA/.vnc" "$DATA/microemu-home/.microemulator/suite-null"
 chmod +x "$SCRIPT_DIR/bootstrap-runtime.sh" "$SCRIPT_DIR/nroctl.sh"
 "$SCRIPT_DIR/bootstrap-runtime.sh"
 
+JAVA_BIN="$DATA/java17/bin/java"
+[[ -x "$JAVA_BIN" ]] || {
+  echo "[raven] ERROR: portable Java 17 missing at $JAVA_BIN" >&2
+  exit 1
+}
+export JAVA_BIN
+
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_GAME="$REPO_ROOT/game.jar"
 echo "[raven] repo game   : $REPO_GAME"
@@ -64,7 +71,9 @@ echo " Emulators    : $ROOT/emulators/"
 echo " Data/state   : $DATA"
 echo " VNC address  : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
 echo " VNC password : $(cat "$PASS_TXT" 2>/dev/null || true)"
-echo " Java         : $(java -version 2>&1 | head -n1)"
+echo " Java game    : $("$JAVA_BIN" -version 2>&1 | head -n1)"
+echo " Java path    : $JAVA_BIN"
+echo " Panel Java   : $(java -version 2>&1 | head -n1)"
 echo " Autorestart  : OFF"
 echo "============================================================"
 
