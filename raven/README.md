@@ -103,3 +103,20 @@ help
 `restart <emulator> <game>` đổi runtime và ghi nhớ selection.
 
 `stop` tạm dừng stack cho tới `start`, `restart`, hoặc full server restart.
+
+
+## Java 17 game runtime
+
+RavenHost có thể vẫn dùng image Java 8 để khởi động `ptero-launcher.jar`. Runtime tự tải Eclipse Temurin JRE 17 portable vào:
+
+```text
+/home/container/nro-data/java17/
+```
+
+MicroEmulator/game luôn được chạy bằng:
+
+```text
+/home/container/nro-data/java17/bin/java
+```
+
+Không cần panel hỗ trợ đổi Docker image sang Java 17.
