@@ -5,6 +5,8 @@ ROOT="${NRO_ROOT:-${HOME:-/home/container}}"
 DATA="${NRO_DATA:-$ROOT/nro-data}"
 MICROEMU="$DATA/microemu"
 VNC="$DATA/vnc"
+JAVA17="$DATA/java17"
+JAVA17_URL="https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jre/hotspot/normal/eclipse"
 APTROOT="$DATA/.raven-apt"
 FOCAL_RUNTIME_URL="https://github.com/russel2138/test/releases/download/nro-runtime-v1/nro-runtime-focal-amd64.tar.gz"
 FOCAL_RUNTIME_SHA256="54300034ec2de5a14647ac68bb1d141437f23c9c879bbb7e5f7ce391194fd69c"
@@ -20,6 +22,38 @@ fetch() {
     echo "[bootstrap] ERROR: curl/wget not found" >&2
     return 1
   fi
+}
+
+ensure_java17() {
+  if [[ -x "$JAVA17/bin/java" ]]; then
+    if "$JAVA17/bin/java" -version 2>&1 | head -n1 | grep -q '"17\.'; then
+      echo "[bootstrap] Java 17 already present: $("$JAVA17/bin/java" -version 2>&1 | head -n1)"
+      return 0
+    fi
+  fi
+
+  echo "[bootstrap] downloading Eclipse Temurin JRE 17..."
+  local tmp="$DATA/.temurin17.tar.gz"
+  rm -f "$tmp"
+  fetch "$JAVA17_URL" "$tmp"
+
+  rm -rf "$JAVA17"
+  mkdir -p "$JAVA17"
+  tar -xzf "$tmp" -C "$JAVA17" --strip-components=1
+  rm -f "$tmp"
+
+  [[ -x "$JAVA17/bin/java" ]] || {
+    echo "[bootstrap] ERROR: Java 17 binary missing after extraction" >&2
+    return 1
+  }
+
+  if ! "$JAVA17/bin/java" -version 2>&1 | head -n1 | grep -q '"17\.'; then
+    echo "[bootstrap] ERROR: downloaded runtime is not Java 17" >&2
+    "$JAVA17/bin/java" -version 2>&1 | head -n3 >&2 || true
+    return 1
+  fi
+
+  echo "[bootstrap] Java 17 ready: $("$JAVA17/bin/java" -version 2>&1 | head -n1)"
 }
 
 ensure_microemu() {
@@ -184,5 +218,6 @@ SRC
   echo "[bootstrap] TigerVNC runtime + XKB data ready"
 }
 
+ensure_java17
 ensure_microemu
 ensure_vnc
