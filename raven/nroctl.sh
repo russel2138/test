@@ -33,6 +33,7 @@ DISPLAY_NUM=":1"
 VNC_PORT="${VNC_PORT:-${SERVER_PORT:-17149}}"
 VNC_GEOMETRY="${VNC_GEOMETRY:-640x480}"
 
+JAVA_BIN="${JAVA_BIN:-$DATA/java17/bin/java}"
 JAVA_XMS="${JAVA_XMS:-16m}"
 JAVA_XMX="${JAVA_XMX:-160m}"
 
@@ -384,7 +385,9 @@ start_game() {
   : > "$GAME_LOG"
 
   echo "[GAME] starting directly (manual restart only)"
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   nohup java     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
+
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
@@ -464,6 +467,12 @@ status() {
   port_listening && echo "[ON]  VNC port         :$VNC_PORT LISTEN" || echo "[OFF] VNC port         :$VNC_PORT"
   [[ -n "$gpid" ]] && echo "[ON]  Game Java        pid=$gpid" || echo "[OFF] Game Java"
   [[ -s "$GAME" ]] && echo "[ON]  game.jar         $GAME" || echo "[OFF] game.jar"
+  if [[ -x "$JAVA_BIN" ]]; then
+    echo "Java game:           $("$JAVA_BIN" -version 2>&1 | head -n1)"
+    echo "Java path:           $JAVA_BIN"
+  else
+    echo "Java game:           MISSING ($JAVA_BIN)"
+  fi
   echo "Autorestart:         OFF"
   echo "State:               $STATE"
   echo "============================================"
