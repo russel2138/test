@@ -120,3 +120,25 @@ MicroEmulator/game luôn được chạy bằng:
 ```
 
 Không cần panel hỗ trợ đổi Docker image sang Java 17.
+
+## Optional SOCKS5 proxy (game JVM only)
+
+The proxy is selected per command. Omitting the proxy always starts the game with a **direct connection**; the proxy is **not** written to the saved emulator/game selection.
+
+```text
+restart                                    # direct, reuse chosen emulator/game
+restart MICRO_NST V9_X1.jar                 # direct, choose emulator/game
+restart 1.2.3.4:1080                       # SOCKS5 without authentication
+restart 1.2.3.4:1080:user:password         # SOCKS5 with authentication
+restart MICRO_NST V9_X1.jar 1.2.3.4:1080
+restart MICRO_NST V9_X1.jar 1.2.3.4:1080:user:password
+game-restart 1.2.3.4:1080:user:password     # restart just the game
+```
+
+`start` accepts the same optional arguments, but if a game is already running, use `restart` or `game-restart` to apply changes. Format is `ip:port` or `ip:port:user:password`; domain names are accepted as hostnames. IPv6 addresses, colons within credentials, and spaces in credentials are not supported by this command parser.
+
+A SOCKS5 endpoint without credentials sets only JVM SOCKS settings. A SOCKS5 endpoint with credentials additionally starts the `Socks5AuthAgent`, which registers a JVM `Authenticator`. The agent source is `Socks5AuthAgent.java` and the Java 8-compatible agent payload is `socks5-auth-agent.jar.b64`. The script decodes and SHA-256 verifies it into `/home/container/nro-data/socks5-auth-agent.jar` on first authenticated use; no JDK is needed on the host.
+
+Credentials are passed to the **game JVM** through environment variables rather than JVM `-D` arguments, but the proxy value still appears in the Pterodactyl console input/history, and users who can inspect process environments may read credentials. Do not commit real passwords into the repository.
+
+Only Java sockets respecting JVM SOCKS proxy settings are redirected. This is not a container-wide proxy and does not affect the launcher or VNC. Verify real game connections before relying on the proxy.
