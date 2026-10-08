@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -u
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 ROOT="${NRO_ROOT:-${HOME:-/home/container}}"
 DATA="${NRO_DATA:-$ROOT/nro-data}"
 
@@ -250,11 +252,16 @@ parse_proxy() {
     return 1
   fi
   SOCKS_HOST="${BASH_REMATCH[1]}"
-  SOCKS_PORT="${BASH_REMATCH[2]}"
+  local port="${BASH_REMATCH[2]}"
   SOCKS_USER="${BASH_REMATCH[4]:-}"
   SOCKS_PASS="${BASH_REMATCH[5]:-}"
-  if (( 10#$SOCKS_PORT < 1 || 10#$SOCKS_PORT > 65535 )); then
+  if (( 10#$port < 1 || 10#$port > 65535 )); then
     echo "[ERROR] Invalid proxy port" >&2
+    return 1
+  fi
+  SOCKS_PORT="$((10#$port))"
+  if (( ${#SOCKS_USER} > 255 || ${#SOCKS_PASS} > 255 )); then
+    echo "[ERROR] SOCKS5 credentials exceed 255 characters" >&2
     return 1
   fi
 }
@@ -398,6 +405,35 @@ start_vnc() {
   return 1
 }
 
+prepare_socks5_agent() {
+  local dest="$DATA/socks5-auth-agent.jar" tmp="" digest=""
+  local expected="f16d411ace6724ff74158bccb8150b0e41b5c47332fd5522fcfe7a02bd103e7b"
+
+  [[ -s "$SCRIPT_DIR/socks5-auth-agent.jar.b64" ]] || {
+    echo "[ERROR] SOCKS5 agent payload missing" >&2
+    return 1
+  }
+  if [[ -s "$dest" ]]; then
+    digest="$(sha256sum "$dest" | awk '{print $1}')"
+    [[ "$digest" == "$expected" ]] && return 0
+  fi
+
+  tmp="$(mktemp "$DATA/.socks5-agent.XXXXXXXX")" || return 1
+  if ! base64 -d "$SCRIPT_DIR/socks5-auth-agent.jar.b64" > "$tmp"; then
+    rm -f "$tmp"
+    echo "[ERROR] Could not decode SOCKS5 agent" >&2
+    return 1
+  fi
+  digest="$(sha256sum "$tmp" | awk '{print $1}')"
+  if [[ "$digest" != "$expected" ]]; then
+    rm -f "$tmp"
+    echo "[ERROR] SOCKS5 agent checksum mismatch" >&2
+    return 1
+  fi
+  mv -f "$tmp" "$dest"
+  chmod 600 "$dest"
+}
+
 start_game() {
   local p
   local -a socks_args=()
@@ -414,15 +450,16 @@ start_game() {
   if [[ -n "$SOCKS_HOST" ]]; then
     socks_args=("-DsocksProxyHost=$SOCKS_HOST" "-DsocksProxyPort=$SOCKS_PORT" "-DsocksProxyVersion=5")
     if [[ -n "$SOCKS_USER" ]]; then
-      socks_args+=("-Djava.net.socks.username=$SOCKS_USER" "-Djava.net.socks.password=$SOCKS_PASS")
+      prepare_socks5_agent || return 1
+      socks_args+=("-javaagent:$DATA/socks5-auth-agent.jar")
     fi
-    echo "[GAME] SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
+    echo "[GAME] SOCKS5 $SOCKS_HOST:$SOCKS_PORT (auth: $([[ -n "$SOCKS_USER" ]] && echo on || echo off))"
   else
     echo "[GAME] starting directly (manual restart only)"
   fi
   [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
 
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
@@ -531,6 +568,7 @@ case "${1:-}" in
     list_runtime
     ;;
   start)
+    (( $# <= 4 )) || { echo "[ERROR] Too many start arguments" >&2; exit 1; }
     choose_runtime "${2:-}" "${3:-}" "${4:-}" || exit 1
     prepare || exit 1
     start_vnc || exit 1
@@ -542,6 +580,7 @@ case "${1:-}" in
     stop_all
     ;;
   restart)
+    (( $# <= 4 )) || { echo "[ERROR] Too many restart arguments" >&2; exit 1; }
     choose_runtime "${2:-}" "${3:-}" "${4:-}" || exit 1
     stop_all
     sleep 1
@@ -562,10 +601,11 @@ case "${1:-}" in
     follow_log
     ;;
   game-restart)
+    (( $# <= 4 )) || { echo "[ERROR] Too many game-restart arguments" >&2; exit 1; }
     restart_game "${2:-}" "${3:-}" "${4:-}"
     ;;
   *)
-    echo "Usage: $0 {list|start [emulator game]|stop|restart [emulator game]|status|log|log-follow|game-restart}"
+    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]]|stop|restart [emulator game] [ip:port[:user:password]]|status|log|log-follow|game-restart [ip:port[:user:password]]}"
     exit 1
     ;;
 esac
