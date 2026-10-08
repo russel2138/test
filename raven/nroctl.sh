@@ -15,6 +15,10 @@ EMU_NAME=""
 GAME_NAME=""
 EMU_JAR=""
 GAME=""
+SOCKS_HOST=""
+SOCKS_PORT=""
+SOCKS_USER=""
+SOCKS_PASS=""
 EMU_HOME=""
 STATE=""
 JAD=""
@@ -239,8 +243,30 @@ select_runtime() {
   JAD="$EMU_HOME/game-manifest.jad"
 }
 
+parse_proxy() {
+  local value="$1"
+  if [[ ! "$value" =~ ^([A-Za-z0-9][A-Za-z0-9._-]*):([0-9]{1,5})(:([^:]+):([^:]+))?$ ]]; then
+    echo "[ERROR] Expected ip:port or ip:port:user:password" >&2
+    return 1
+  fi
+  SOCKS_HOST="${BASH_REMATCH[1]}"
+  SOCKS_PORT="${BASH_REMATCH[2]}"
+  SOCKS_USER="${BASH_REMATCH[4]:-}"
+  SOCKS_PASS="${BASH_REMATCH[5]:-}"
+  if (( 10#$SOCKS_PORT < 1 || 10#$SOCKS_PORT > 65535 )); then
+    echo "[ERROR] Invalid proxy port" >&2
+    return 1
+  fi
+}
+
 choose_runtime() {
-  local emu_arg="${1:-}" game_arg="${2:-}"
+  local emu_arg="${1:-}" game_arg="${2:-}" proxy_arg="${3:-}"
+  SOCKS_HOST="" SOCKS_PORT="" SOCKS_USER="" SOCKS_PASS=""
+  if [[ "$emu_arg" == *:* && -z "$game_arg" && -z "$proxy_arg" ]]; then
+    proxy_arg="$emu_arg"
+    emu_arg=""
+  fi
+  [[ -z "$proxy_arg" ]] || parse_proxy "$proxy_arg" || return 1
 
   if [[ -n "$emu_arg" || -n "$game_arg" ]]; then
     if [[ -z "$emu_arg" || -z "$game_arg" ]]; then
@@ -374,6 +400,7 @@ start_vnc() {
 
 start_game() {
   local p
+  local -a socks_args=()
 
   p="$(find_game_pid || true)"
   if [[ -n "$p" ]]; then
@@ -384,10 +411,18 @@ start_game() {
   rm -f "$GAME_PID"
   : > "$GAME_LOG"
 
-  echo "[GAME] starting directly (manual restart only)"
+  if [[ -n "$SOCKS_HOST" ]]; then
+    socks_args=("-DsocksProxyHost=$SOCKS_HOST" "-DsocksProxyPort=$SOCKS_PORT" "-DsocksProxyVersion=5")
+    if [[ -n "$SOCKS_USER" ]]; then
+      socks_args+=("-Djava.net.socks.username=$SOCKS_USER" "-Djava.net.socks.password=$SOCKS_PASS")
+    fi
+    echo "[GAME] SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
+  else
+    echo "[GAME] starting directly (manual restart only)"
+  fi
   [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
 
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
@@ -448,7 +483,7 @@ stop_all() {
 }
 
 restart_game() {
-  choose_runtime || return 1
+  choose_runtime "${1:-}" "${2:-}" "${3:-}" || return 1
   prepare || return 1
   stop_game
   start_game
@@ -496,7 +531,7 @@ case "${1:-}" in
     list_runtime
     ;;
   start)
-    choose_runtime "${2:-}" "${3:-}" || exit 1
+    choose_runtime "${2:-}" "${3:-}" "${4:-}" || exit 1
     prepare || exit 1
     start_vnc || exit 1
     start_game || exit 1
@@ -507,7 +542,7 @@ case "${1:-}" in
     stop_all
     ;;
   restart)
-    choose_runtime "${2:-}" "${3:-}" || exit 1
+    choose_runtime "${2:-}" "${3:-}" "${4:-}" || exit 1
     stop_all
     sleep 1
     prepare || exit 1
@@ -527,7 +562,7 @@ case "${1:-}" in
     follow_log
     ;;
   game-restart)
-    restart_game
+    restart_game "${2:-}" "${3:-}" "${4:-}"
     ;;
   *)
     echo "Usage: $0 {list|start [emulator game]|stop|restart [emulator game]|status|log|log-follow|game-restart}"
