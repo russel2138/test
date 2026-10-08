@@ -105,16 +105,17 @@ fi
 print_help() {
   echo "Commands:"
   echo "  list"
-  echo "  start [<emulator> <game>]"
+  echo "  start [<emulator> <game>] [ip:port[:user:password]]"
   echo "  stop"
-  echo "  restart [<emulator> <game>]"
-  echo "  game-restart"
+  echo "  restart [<emulator> <game>] [ip:port[:user:password]]"
+  echo "  game-restart [ip:port[:user:password]]"
   echo "  status"
   echo "  log | log-stop"
   echo "  vnc | help"
   echo "  update              # pull latest GitHub runtime and reload"
   echo "  exit | shutdown     # stop everything and exit main server process"
-  echo "Example: restart stock game.jar"
+  echo "Example: restart stock game.jar 1.2.3.4:1080:user:password"
+  echo "No proxy argument means direct connection."
 }
 
 echo "[raven] Console ready."
@@ -146,7 +147,7 @@ while true; do
       "$SCRIPT_DIR/nroctl.sh" restart "${args[@]}"
       ;;
     game-restart)
-      "$SCRIPT_DIR/nroctl.sh" game-restart
+      "$SCRIPT_DIR/nroctl.sh" game-restart "${args[@]}"
       ;;
     status)
       "$SCRIPT_DIR/nroctl.sh" status
