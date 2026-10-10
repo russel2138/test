@@ -115,7 +115,7 @@ print_help() {
   echo "  update              # pull latest GitHub runtime and reload"
   echo "  exit | shutdown     # stop everything and exit main server process"
   echo "Example: restart stock game.jar 1.2.3.4:1080:user:password"
-  echo "No proxy argument means direct connection."
+  echo "No proxy argument reuses the last selected proxy (if any). Use direct to disable proxy."
 }
 
 echo "[raven] Console ready."
