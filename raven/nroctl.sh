@@ -76,7 +76,7 @@ find_game_pid() {
   [[ -n "$p" ]] || return 1
   kill -0 "$p" 2>/dev/null || return 1
   cmd="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null || true)"
-  [[ "$cmd" == *"org.microemu.app.Main"* ]] || return 1
+  [[ "$cmd" == *"org.microemu.app.Main"* || "$cmd" == *"RavenSocksLauncher"* ]] || return 1
   printf '%s\n' "$p"
 }
 
@@ -418,12 +418,12 @@ start_vnc() {
   return 1
 }
 
-prepare_socks5_agent() {
-  local dest="$DATA/socks5-auth-agent.jar" tmp="" digest=""
-  local expected="f16d411ace6724ff74158bccb8150b0e41b5c47332fd5522fcfe7a02bd103e7b"
+prepare_socks5_launcher() {
+  local dest="$DATA/socks5-launcher.jar" tmp="" digest=""
+  local expected="c7be592b68c25d3f5cafe420f04fab914a9b3ede92258a7b71b1ab44b91111d9"
 
-  [[ -s "$SCRIPT_DIR/socks5-auth-agent.jar.b64" ]] || {
-    echo "[ERROR] SOCKS5 agent payload missing" >&2
+  [[ -s "$SCRIPT_DIR/RavenSocksLauncher.jar.b64" ]] || {
+    echo "[ERROR] SOCKS5 launcher payload missing" >&2
     return 1
   }
   if [[ -s "$dest" ]]; then
@@ -431,16 +431,16 @@ prepare_socks5_agent() {
     [[ "$digest" == "$expected" ]] && return 0
   fi
 
-  tmp="$(mktemp "$DATA/.socks5-agent.XXXXXXXX")" || return 1
-  if ! base64 -d "$SCRIPT_DIR/socks5-auth-agent.jar.b64" > "$tmp"; then
+  tmp="$(mktemp "$DATA/.socks5-launcher.XXXXXXXX")" || return 1
+  if ! base64 -d "$SCRIPT_DIR/RavenSocksLauncher.jar.b64" > "$tmp"; then
     rm -f "$tmp"
-    echo "[ERROR] Could not decode SOCKS5 agent" >&2
+    echo "[ERROR] Could not decode SOCKS5 launcher" >&2
     return 1
   fi
   digest="$(sha256sum "$tmp" | awk '{print $1}')"
   if [[ "$digest" != "$expected" ]]; then
     rm -f "$tmp"
-    echo "[ERROR] SOCKS5 agent checksum mismatch" >&2
+    echo "[ERROR] SOCKS5 launcher checksum mismatch" >&2
     return 1
   fi
   mv -f "$tmp" "$dest"
@@ -450,6 +450,7 @@ prepare_socks5_agent() {
 start_game() {
   local p
   local -a socks_args=()
+  local main_class="org.microemu.app.Main" game_cp="$CP"
 
   p="$(find_game_pid || true)"
   if [[ -n "$p" ]]; then
@@ -463,16 +464,17 @@ start_game() {
   if [[ -n "$SOCKS_HOST" ]]; then
     socks_args=("-DsocksProxyHost=$SOCKS_HOST" "-DsocksProxyPort=$SOCKS_PORT" "-DsocksProxyVersion=5")
     if [[ -n "$SOCKS_USER" ]]; then
-      prepare_socks5_agent || return 1
-      socks_args+=("-javaagent:$DATA/socks5-auth-agent.jar")
+      prepare_socks5_launcher || return 1
+      main_class="RavenSocksLauncher"
+      game_cp="$DATA/socks5-launcher.jar:$CP"
     fi
-    echo "[GAME] SOCKS5 $SOCKS_HOST:$SOCKS_PORT (auth: $([[ -n "$SOCKS_USER" ]] && echo on || echo off))"
+    echo "[GAME] SOCKS5 $SOCKS_HOST:$SOCKS_PORT (auth: $([[ -n "$SOCKS_USER" ]] && echo launcher || echo IP-allowlist))"
   else
     echo "[GAME] starting directly (no SOCKS5 configured)"
   fi
   [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
 
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$game_cp"     "$main_class"     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
@@ -507,7 +509,7 @@ stop_pidfile() {
       [[ "$cmd" == *"Xtigervnc"* ]] || { rm -f "$f"; return 0; }
       ;;
     "$GAME_PID")
-      [[ "$cmd" == *"org.microemu.app.Main"* ]] || { rm -f "$f"; return 0; }
+      [[ "$cmd" == *"org.microemu.app.Main"* || "$cmd" == *"RavenSocksLauncher"* ]] || { rm -f "$f"; return 0; }
       ;;
   esac
 
