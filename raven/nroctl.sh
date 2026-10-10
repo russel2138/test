@@ -359,12 +359,11 @@ list_runtime() {
   echo "============================================"
 }
 
-prepare() {
-  mkdir -p "$DATA" "$EMU_HOME" "$STATE" "$DATA/.vnc" /tmp/xxx
+prepare_game() {
+  mkdir -p "$DATA" "$EMU_HOME" "$STATE"
 
   [[ -s "$GAME" ]] || { echo "[ERROR] Missing game: $GAME"; return 1; }
   [[ -s "$EMU_JAR" ]] || { echo "[ERROR] Missing emulator: $EMU_JAR"; return 1; }
-  [[ -s "$VNC_PASS" ]] || { echo "[ERROR] Missing VNC password file: $VNC_PASS"; return 1; }
 
   read_game_manifest 2>/dev/null | tr -d '\r' > "$JAD.tmp" || true
   if [[ -s "$JAD.tmp" ]]; then
@@ -374,17 +373,40 @@ prepare() {
   fi
 
   mkdir -p "$STATE/suite-null"
+}
 
-  rm -f /tmp/xxx/xkbcomp
+prepare_vnc() {
+  local staged=""
+  mkdir -p "$DATA/.vnc" /tmp/xxx
+  [[ -s "$VNC_PASS" ]] || { echo "[ERROR] Missing VNC password file: $VNC_PASS"; return 1; }
+
+  # A game-only restart must not rewrite the running VNC executable.
+  # When VNC is already active, leave its binary and XKB helper untouched.
+  if [[ -n "$(find_vnc_pid || true)" ]] && port_listening; then
+    return 0
+  fi
+
   cat > /tmp/xxx/xkbcomp <<EOF
 #!/bin/sh
 exec "$XKBCOMP" -I"$XKBDIR" "\$@"
 EOF
-  chmod +x /tmp/xxx/xkbcomp
+  chmod +x /tmp/xxx/xkbcomp || return 1
 
-  cp "$VNC_ORIG" "$VNC_BIN"
-  sed -i 's#/usr/bin#/tmp/xxx#g' "$VNC_BIN"
-  chmod +x "$VNC_BIN"
+  # Write a new inode then rename it into place; never cp over a running ELF.
+  staged="$(mktemp "$VNC_BIN.tmp.XXXXXXXX")" || return 1
+  if ! cp "$VNC_ORIG" "$staged" ||
+     ! sed -i 's#/usr/bin#/tmp/xxx#g' "$staged" ||
+     ! chmod +x "$staged" ||
+     ! mv -f "$staged" "$VNC_BIN"; then
+    rm -f "$staged"
+    echo "[VNC] Failed to prepare TigerVNC executable" >&2
+    return 1
+  fi
+}
+
+prepare() {
+  prepare_game || return 1
+  prepare_vnc || return 1
 }
 
 start_vnc() {
@@ -570,7 +592,7 @@ reset_rms() {
 
 restart_game() {
   choose_runtime "${1:-}" "${2:-}" "${3:-}" || return 1
-  prepare || return 1
+  prepare_game || return 1
   stop_game
   start_game
 }
@@ -609,6 +631,29 @@ status() {
   echo "RMS:                 file (persistent)"
   echo "Emulator profile:    $STATE"
   echo "============================================"
+}
+
+show_game_errors() {
+  echo "=== LAST GAME THREAD EXCEPTION ==="
+  if [[ ! -s "$GAME_LOG" ]]; then
+    echo "[GAME] game.log is empty"
+    return 0
+  fi
+  awk '
+    /MIDletThread throws|Exception in thread/ {
+      result = $0 ORS
+      remaining = 16
+      next
+    }
+    remaining > 0 {
+      result = result $0 ORS
+      remaining--
+    }
+    END {
+      if (result == "") print "[GAME] No recorded thread exception."
+      else printf "%s", result
+    }
+  ' "$GAME_LOG"
 }
 
 show_log() {
@@ -661,6 +706,9 @@ case "${1:-}" in
   log-follow)
     follow_log
     ;;
+  game-errors|errors)
+    show_game_errors
+    ;;
   game-restart)
     (( $# <= 4 )) || { echo "[ERROR] Too many game-restart arguments" >&2; exit 1; }
     restart_game "${2:-}" "${3:-}" "${4:-}"
@@ -670,7 +718,7 @@ case "${1:-}" in
     reset_rms
     ;;
   *)
-    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-restart [ip:port[:user:password]|direct]|rms-reset} (no proxy => direct; use rms-reset when stopped)"
+    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-errors|game-restart [ip:port[:user:password]|direct]|rms-reset} (no proxy => direct; use rms-reset when stopped)"
     exit 1
     ;;
 esac
