@@ -95,7 +95,7 @@ cleanup_orphan_log_followers() {
     [[ "${args[4]}" == "$DATA/game.log" && "${args[5]}" == "$DATA/vnc.log" ]] || continue
     pid="${cmdline#/proc/}"
     pid="${pid%%/*}"
-    [[ "$pid" =~ ^[0-9]+$ && "$pid" != "$" ]] || continue
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
       echo "[LOG] terminated leftover follower (pid $pid)"
