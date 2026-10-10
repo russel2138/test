@@ -67,6 +67,7 @@ echo " NRO on Raven / Pterodactyl"
 echo " Source       : $SCRIPT_DIR"
 echo " Legacy game  : $ROOT/game.jar"
 echo " Game uploads : $ROOT/games/"
+echo " Game RMS     : memory-only (not persisted)"
 echo " Emulators    : $ROOT/emulators/"
 echo " Data/state   : $DATA"
 echo " VNC address  : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
@@ -143,7 +144,8 @@ print_help() {
   echo "  update              # pull latest GitHub runtime and reload"
   echo "  exit | shutdown     # stop everything and exit main server process"
   echo "Example: restart stock game.jar 1.2.3.4:1080:user:password"
-  echo "No proxy argument reuses the last selected proxy (if any). Use direct to disable proxy."
+  echo "No proxy argument means DIRECT. SOCKS5 must be supplied on every start/restart."
+  echo "Game RMS: memory-only (not saved between restarts)."
 }
 
 echo "[raven] Console ready."
