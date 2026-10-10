@@ -141,6 +141,7 @@ print_help() {
   echo "  rms-reset          # backup and reset game RMS; only when game is stopped"
   echo "  status"
   echo "  log | log-stop"
+  echo "  game-errors        # print the latest game thread crash without live logs"
   echo "  vnc | help"
   echo "  update              # pull latest GitHub runtime and reload"
   echo "  exit | shutdown     # stop everything and exit main server process"
@@ -197,6 +198,9 @@ while true; do
       ;;
     log-stop)
       stop_live_log
+      ;;
+    game-errors|errors)
+      "$SCRIPT_DIR/nroctl.sh" game-errors
       ;;
     vnc)
       echo "VNC address : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
