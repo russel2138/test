@@ -79,6 +79,33 @@ echo "============================================================"
 
 LIVE_LOG_PID=""
 
+# Older Raven versions launched a subshell that left its 'tail -F' child
+# orphaned. Stop only followers of these exact two Raven log files; never
+# touch the game JVM, VNC, or unrelated tail processes.
+cleanup_orphan_log_followers() {
+  local cmdline pid
+  local -a args=()
+  for cmdline in /proc/[0-9]*/cmdline; do
+    [[ -r "$cmdline" ]] || continue
+    args=()
+    mapfile -d '' -t args < "$cmdline" 2>/dev/null || continue
+    (( ${#args[@]} == 6 )) || continue
+    [[ "${args[0]##*/}" == "tail" ]] || continue
+    [[ "${args[1]}" == "-n" && "${args[2]}" == "40" && "${args[3]}" == "-F" ]] || continue
+    [[ "${args[4]}" == "$DATA/game.log" && "${args[5]}" == "$DATA/vnc.log" ]] || continue
+    pid="${cmdline#/proc/}"
+    pid="${pid%%/*}"
+    [[ "$pid" =~ ^[0-9]+$ && "$pid" != "$" ]] || continue
+    if kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null || true
+      echo "[LOG] terminated leftover follower (pid $pid)"
+    fi
+  done
+}
+
+# Remove orphan followers once at startup, even after a Raven 'update'.
+cleanup_orphan_log_followers
+
 stop_live_log() {
   if [[ -n "${LIVE_LOG_PID:-}" ]] && kill -0 "$LIVE_LOG_PID" 2>/dev/null; then
     kill "$LIVE_LOG_PID" 2>/dev/null || true
@@ -86,6 +113,7 @@ stop_live_log() {
     echo "[LOG] live follow stopped"
   fi
   LIVE_LOG_PID=""
+  cleanup_orphan_log_followers
 }
 
 shutdown() {
