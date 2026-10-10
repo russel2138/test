@@ -67,7 +67,7 @@ echo " NRO on Raven / Pterodactyl"
 echo " Source       : $SCRIPT_DIR"
 echo " Legacy game  : $ROOT/game.jar"
 echo " Game uploads : $ROOT/games/"
-echo " Game RMS     : memory-only (not persisted)"
+echo " Game RMS     : persistent file; reset only with rms-reset"
 echo " Emulators    : $ROOT/emulators/"
 echo " Data/state   : $DATA"
 echo " VNC address  : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
@@ -138,6 +138,7 @@ print_help() {
   echo "  stop"
   echo "  restart [<emulator> <game>] [ip:port[:user:password]]"
   echo "  game-restart [ip:port[:user:password]]"
+  echo "  rms-reset          # backup and reset game RMS; only when game is stopped"
   echo "  status"
   echo "  log | log-stop"
   echo "  vnc | help"
@@ -145,7 +146,7 @@ print_help() {
   echo "  exit | shutdown     # stop everything and exit main server process"
   echo "Example: restart stock game.jar 1.2.3.4:1080:user:password"
   echo "No proxy argument means DIRECT. SOCKS5 must be supplied on every start/restart."
-  echo "Game RMS: memory-only (not saved between restarts)."
+  echo "Game RMS: persistent file; stop then run rms-reset to reset manually."
 }
 
 echo "[raven] Console ready."
@@ -178,6 +179,9 @@ while true; do
       ;;
     game-restart)
       "$SCRIPT_DIR/nroctl.sh" game-restart "${args[@]}"
+      ;;
+    rms-reset|reset-mem)
+      "$SCRIPT_DIR/nroctl.sh" rms-reset "${args[@]}"
       ;;
     status)
       "$SCRIPT_DIR/nroctl.sh" status
