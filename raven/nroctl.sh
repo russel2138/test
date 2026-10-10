@@ -560,7 +560,7 @@ show_log() {
 
 follow_log() {
   echo "[LOG] live follow started (GAME + VNC)"
-  tail -n 40 -F "$GAME_LOG" "$VNC_LOG" 2>/dev/null
+  exec tail -n 40 -F "$GAME_LOG" "$VNC_LOG" 2>/dev/null
 }
 
 case "${1:-}" in
