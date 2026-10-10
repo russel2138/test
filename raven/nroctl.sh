@@ -494,7 +494,7 @@ start_game() {
     fi
     echo "[GAME] SOCKS5 $SOCKS_HOST:$SOCKS_PORT (auth: $([[ -n "$SOCKS_USER" ]] && echo on || echo off))"
   else
-    echo "[GAME] starting directly (manual restart only)"
+    echo "[GAME] starting directly (no SOCKS5 configured)"
   fi
   [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
 
