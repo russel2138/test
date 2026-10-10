@@ -10,6 +10,7 @@ GAMES_DIR="$ROOT/games"
 EMULATORS_DIR="$ROOT/emulators"
 PROFILES_DIR="$DATA/profiles"
 SELECTION_FILE="$DATA/current-selection.env"
+PROXY_STATE_FILE="$DATA/current-proxy.env"
 
 EMU_SELECTOR=""
 GAME_SELECTOR=""
@@ -101,6 +102,32 @@ save_selection() {
     printf 'EMU_SELECTOR=%q\n' "$EMU_SELECTOR"
     printf 'GAME_SELECTOR=%q\n' "$GAME_SELECTOR"
   } > "$SELECTION_FILE"
+}
+
+# Persist the explicitly selected proxy so game-restart/update never silently
+# switches an existing proxied game to a direct connection.
+# This file contains proxy credentials: keep it private and never print them.
+save_proxy_state() {
+  mkdir -p "$DATA" || return 1
+  (
+    umask 077
+    {
+      printf 'SOCKS_HOST=%q\n' "$SOCKS_HOST"
+      printf 'SOCKS_PORT=%q\n' "$SOCKS_PORT"
+      printf 'SOCKS_USER=%q\n' "$SOCKS_USER"
+      printf 'SOCKS_PASS=%q\n' "$SOCKS_PASS"
+    } > "$PROXY_STATE_FILE"
+  )
+}
+
+load_proxy_state() {
+  [[ -s "$PROXY_STATE_FILE" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$PROXY_STATE_FILE"
+  if [[ -z "$SOCKS_HOST" || ! "$SOCKS_PORT" =~ ^[0-9]+$ ]]; then
+    echo "[ERROR] Invalid saved proxy configuration: $PROXY_STATE_FILE" >&2
+    return 1
+  fi
 }
 
 resolve_emulator() {
@@ -272,8 +299,20 @@ choose_runtime() {
   if [[ "$emu_arg" == *:* && -z "$game_arg" && -z "$proxy_arg" ]]; then
     proxy_arg="$emu_arg"
     emu_arg=""
+  elif [[ "$emu_arg" == "direct" && -z "$game_arg" && -z "$proxy_arg" ]]; then
+    proxy_arg="direct"
+    emu_arg=""
   fi
-  [[ -z "$proxy_arg" ]] || parse_proxy "$proxy_arg" || return 1
+
+  if [[ "$proxy_arg" == "direct" ]]; then
+    # Explicit opt-out; omitting the proxy argument now preserves the last one.
+    rm -f "$PROXY_STATE_FILE"
+  elif [[ -n "$proxy_arg" ]]; then
+    parse_proxy "$proxy_arg" || return 1
+    save_proxy_state || return 1
+  else
+    load_proxy_state || return 1
+  fi
 
   if [[ -n "$emu_arg" || -n "$game_arg" ]]; then
     if [[ -z "$emu_arg" || -z "$game_arg" ]]; then
@@ -538,6 +577,19 @@ status() {
   [[ -n "$vpid" ]] && echo "[ON]  VNC process      pid=$vpid" || echo "[OFF] VNC process"
   port_listening && echo "[ON]  VNC port         :$VNC_PORT LISTEN" || echo "[OFF] VNC port         :$VNC_PORT"
   [[ -n "$gpid" ]] && echo "[ON]  Game Java        pid=$gpid" || echo "[OFF] Game Java"
+  if [[ -n "$gpid" ]]; then
+    local active_cmd=""
+    active_cmd="$(tr '\\0' '\\n' < "/proc/$gpid/cmdline" 2>/dev/null || true)"
+    if [[ "$active_cmd" == *"-DsocksProxyHost="* ]]; then
+      echo "Proxy JVM:           SOCKS5 configured (check Webshare Activity for actual traffic)"
+    else
+      echo "Proxy JVM:           DIRECT (no SOCKS5 JVM argument)"
+    fi
+  elif [[ -n "$SOCKS_HOST" ]]; then
+    echo "Proxy saved:         SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
+  else
+    echo "Proxy saved:         DIRECT"
+  fi
   [[ -s "$GAME" ]] && echo "[ON]  game.jar         $GAME" || echo "[OFF] game.jar"
   if [[ -x "$JAVA_BIN" ]]; then
     echo "Java game:           $("$JAVA_BIN" -version 2>&1 | head -n1)"
@@ -605,7 +657,7 @@ case "${1:-}" in
     restart_game "${2:-}" "${3:-}" "${4:-}"
     ;;
   *)
-    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]]|stop|restart [emulator game] [ip:port[:user:password]]|status|log|log-follow|game-restart [ip:port[:user:password]]}"
+    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-restart [ip:port[:user:password]|direct]}"
     exit 1
     ;;
 esac
