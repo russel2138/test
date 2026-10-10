@@ -579,7 +579,7 @@ status() {
   [[ -n "$gpid" ]] && echo "[ON]  Game Java        pid=$gpid" || echo "[OFF] Game Java"
   if [[ -n "$gpid" ]]; then
     local active_cmd=""
-    active_cmd="$(tr '\\0' '\\n' < "/proc/$gpid/cmdline" 2>/dev/null || true)"
+    active_cmd="$(tr '\0' '\n' < "/proc/$gpid/cmdline" 2>/dev/null || true)"
     if [[ "$active_cmd" == *"-DsocksProxyHost="* ]]; then
       echo "Proxy JVM:           SOCKS5 configured (check Webshare Activity for actual traffic)"
     else
