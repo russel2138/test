@@ -472,7 +472,7 @@ start_game() {
   fi
   [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
 
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms memory     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
@@ -532,6 +532,40 @@ stop_all() {
   echo "[NRO] stopped"
 }
 
+reset_rms() {
+  local dir target stamp count=0 n
+  choose_runtime || return 1
+  if [[ -n "$(find_game_pid || true)" ]]; then
+    echo "[RMS] Game is running. Use 'stop' first, then 'rms-reset'." >&2
+    return 1
+  fi
+
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  # Only touch RecordStore suite folders for the selected game/emulator.
+  # Preserve a backup instead of permanently deleting game settings.
+  for dir in "$STATE"/suite-*; do
+    [[ -d "$dir" ]] || continue
+    [[ "$dir" == *.backup.* ]] && continue
+    target="$dir.backup.$stamp"
+    n=1
+    while [[ -e "$target" ]]; do
+      target="$dir.backup.$stamp.$n"
+      ((n+=1))
+    done
+    mv -- "$dir" "$target" || {
+      echo "[RMS] Failed to back up $dir" >&2
+      return 1
+    }
+    echo "[RMS] Saved backup: $target"
+    ((count+=1))
+  done
+  if (( count == 0 )); then
+    echo "[RMS] No saved RecordStore found for the selected game."
+  else
+    echo "[RMS] Reset $count RecordStore folder(s). Start the game to create fresh data."
+  fi
+}
+
 restart_game() {
   choose_runtime "${1:-}" "${2:-}" "${3:-}" || return 1
   prepare || return 1
@@ -570,7 +604,7 @@ status() {
     echo "Java game:           MISSING ($JAVA_BIN)"
   fi
   echo "Autorestart:         OFF"
-  echo "RMS:                 memory (not persisted)"
+  echo "RMS:                 file (persistent)"
   echo "Emulator profile:    $STATE"
   echo "============================================"
 }
@@ -629,8 +663,12 @@ case "${1:-}" in
     (( $# <= 4 )) || { echo "[ERROR] Too many game-restart arguments" >&2; exit 1; }
     restart_game "${2:-}" "${3:-}" "${4:-}"
     ;;
+  rms-reset|reset-mem)
+    (( $# == 1 )) || { echo "[ERROR] rms-reset takes no arguments" >&2; exit 1; }
+    reset_rms
+    ;;
   *)
-    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-restart [ip:port[:user:password]|direct]} (no proxy => direct; RMS in memory)"
+    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-restart [ip:port[:user:password]|direct]|rms-reset} (no proxy => direct; use rms-reset when stopped)"
     exit 1
     ;;
 esac
