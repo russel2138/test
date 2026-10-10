@@ -11,6 +11,8 @@ EMULATORS_DIR="$ROOT/emulators"
 PROFILES_DIR="$DATA/profiles"
 SELECTION_FILE="$DATA/current-selection.env"
 PROXY_STATE_FILE="$DATA/current-proxy.env"
+# Remove credentials persisted by previous releases. Proxy settings are now per launch.
+rm -f "$PROXY_STATE_FILE"
 
 EMU_SELECTOR=""
 GAME_SELECTOR=""
@@ -102,32 +104,6 @@ save_selection() {
     printf 'EMU_SELECTOR=%q\n' "$EMU_SELECTOR"
     printf 'GAME_SELECTOR=%q\n' "$GAME_SELECTOR"
   } > "$SELECTION_FILE"
-}
-
-# Persist the explicitly selected proxy so game-restart/update never silently
-# switches an existing proxied game to a direct connection.
-# This file contains proxy credentials: keep it private and never print them.
-save_proxy_state() {
-  mkdir -p "$DATA" || return 1
-  (
-    umask 077
-    {
-      printf 'SOCKS_HOST=%q\n' "$SOCKS_HOST"
-      printf 'SOCKS_PORT=%q\n' "$SOCKS_PORT"
-      printf 'SOCKS_USER=%q\n' "$SOCKS_USER"
-      printf 'SOCKS_PASS=%q\n' "$SOCKS_PASS"
-    } > "$PROXY_STATE_FILE"
-  )
-}
-
-load_proxy_state() {
-  [[ -s "$PROXY_STATE_FILE" ]] || return 0
-  # shellcheck disable=SC1090
-  source "$PROXY_STATE_FILE"
-  if [[ -z "$SOCKS_HOST" || ! "$SOCKS_PORT" =~ ^[0-9]+$ ]]; then
-    echo "[ERROR] Invalid saved proxy configuration: $PROXY_STATE_FILE" >&2
-    return 1
-  fi
 }
 
 resolve_emulator() {
@@ -304,14 +280,12 @@ choose_runtime() {
     emu_arg=""
   fi
 
+  # No proxy argument always means a direct connection.
+  # Proxy credentials are never saved or reused between launches.
   if [[ "$proxy_arg" == "direct" ]]; then
-    # Explicit opt-out; omitting the proxy argument now preserves the last one.
-    rm -f "$PROXY_STATE_FILE"
+    proxy_arg=""
   elif [[ -n "$proxy_arg" ]]; then
     parse_proxy "$proxy_arg" || return 1
-    save_proxy_state || return 1
-  else
-    load_proxy_state || return 1
   fi
 
   if [[ -n "$emu_arg" || -n "$game_arg" ]]; then
@@ -498,7 +472,7 @@ start_game() {
   fi
   [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
 
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$CP"     org.microemu.app.Main     --rms memory     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
@@ -585,10 +559,8 @@ status() {
     else
       echo "Proxy JVM:           DIRECT (no SOCKS5 JVM argument)"
     fi
-  elif [[ -n "$SOCKS_HOST" ]]; then
-    echo "Proxy saved:         SOCKS5 $SOCKS_HOST:$SOCKS_PORT"
   else
-    echo "Proxy saved:         DIRECT"
+    echo "Proxy JVM:           game is not running"
   fi
   [[ -s "$GAME" ]] && echo "[ON]  game.jar         $GAME" || echo "[OFF] game.jar"
   if [[ -x "$JAVA_BIN" ]]; then
@@ -598,7 +570,8 @@ status() {
     echo "Java game:           MISSING ($JAVA_BIN)"
   fi
   echo "Autorestart:         OFF"
-  echo "State:               $STATE"
+  echo "RMS:                 memory (not persisted)"
+  echo "Emulator profile:    $STATE"
   echo "============================================"
 }
 
@@ -657,7 +630,7 @@ case "${1:-}" in
     restart_game "${2:-}" "${3:-}" "${4:-}"
     ;;
   *)
-    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-restart [ip:port[:user:password]|direct]}"
+    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-restart [ip:port[:user:password]|direct]} (no proxy => direct; RMS in memory)"
     exit 1
     ;;
 esac
