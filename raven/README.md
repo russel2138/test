@@ -105,6 +105,27 @@ help
 `stop` tạm dừng stack cho tới `start`, `restart`, hoặc full server restart.
 
 
+## Per-host RMS storage mode (Zampto)
+
+By default, MicroEmulator uses persistent file-backed RMS on every host.
+Switch **only the Zampto server** to memory-backed RMS using its panel console:
+
+```text
+update
+rms-mode memory
+game-restart
+status
+```
+
+`rms-mode` displays the currently configured mode.
+`rms-mode file` restores file-backed RMS; restart the game afterward.
+
+- The mode persists per **container** at `/home/container/nro-data/rms-mode.conf`.
+- In `memory` mode, RecordStore is supported but loses all contents on game restart.
+- Existing on-disk RMS data is **not deleted**, and will be reused if switched back to `file`.
+- Switching the mode requires `game-restart` or `restart` to take effect.
+- This does not change RMS mode on RavenHost, Enzonic, or other containers sharing the repo.
+
 ## Java 17 game runtime
 
 RavenHost có thể vẫn dùng image Java 8 để khởi động `ptero-launcher.jar`. Runtime tự tải Eclipse Temurin JRE 17 portable vào:
