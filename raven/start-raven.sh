@@ -142,6 +142,8 @@ print_help() {
   echo "  status"
   echo "  log | log-stop"
   echo "  game-errors        # print the latest game thread crash without live logs"
+  echo "  bash | shell        # interactive Bash; type exit to return"
+  echo "  bash <command>     # run one Bash command, then return"
   echo "  vnc | help"
   echo "  update              # pull latest GitHub runtime and reload"
   echo "  exit | shutdown     # stop everything and exit main server process"
@@ -205,6 +207,16 @@ while true; do
     vnc)
       echo "VNC address : ${SERVER_IP:-0.0.0.0}:$VNC_PORT"
       echo "VNC password: $(cat "$PASS_TXT" 2>/dev/null || true)"
+      ;;
+    bash|shell)
+      if (( ${#args[@]} > 0 )); then
+        # Use the original input to preserve shell quoting, pipes and redirects.
+        bash -c "${cmd#"$action "}"
+      else
+        echo "[raven] Bash mode (inside this container). Type 'exit' to return to NRO commands."
+        PS1='nro-bash:\w\$ ' bash --noprofile --norc -i
+        echo "[raven] Returned to NRO console."
+      fi
       ;;
     update)
       echo "[raven] updating runtime from GitHub..."
