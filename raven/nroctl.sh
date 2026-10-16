@@ -11,6 +11,7 @@ EMULATORS_DIR="$ROOT/emulators"
 PROFILES_DIR="$DATA/profiles"
 SELECTION_FILE="$DATA/current-selection.env"
 PROXY_STATE_FILE="$DATA/current-proxy.env"
+RMS_MODE_FILE="$DATA/rms-mode.conf"
 # Remove credentials persisted by previous releases. Proxy settings are now per launch.
 rm -f "$PROXY_STATE_FILE"
 
@@ -50,6 +51,43 @@ VNC_PID="$DATA/vnc.pid"
 GAME_PID="$DATA/game.pid"
 VNC_LOG="$DATA/vnc.log"
 GAME_LOG="$DATA/game.log"
+
+# Per-host RMS mode. Defaults to the existing persistent file backend.
+# Each host keeps its own config under nro-data; this does not affect other servers.
+get_rms_mode() {
+  local mode="file"
+  if [[ -s "$RMS_MODE_FILE" ]]; then
+    IFS= read -r mode < "$RMS_MODE_FILE" || true
+  fi
+  case "$mode" in
+    file|memory) printf '%s\n' "$mode" ;;
+    *)
+      echo "[RMS] Invalid configured mode; using file" >&2
+      printf '%s\n' "file"
+      ;;
+  esac
+}
+
+set_rms_mode() {
+  local mode="${1:-}"
+  if [[ -z "$mode" ]]; then
+    echo "[RMS] configured: $(get_rms_mode)"
+    return 0
+  fi
+  case "$mode" in
+    file|memory) ;;
+    *)
+      echo "[RMS] Expected: rms-mode file|memory" >&2
+      return 1
+      ;;
+  esac
+  mkdir -p "$DATA" || return 1
+  printf '%s\n' "$mode" > "$RMS_MODE_FILE" || return 1
+  echo "[RMS] configured: $mode (applies after game-restart or restart)"
+  if [[ -n "$(find_game_pid || true)" ]]; then
+    echo "[RMS] Game is running; restart it to apply the new mode."
+  fi
+}
 
 pid_alive() {
   local f="$1" p
@@ -470,7 +508,7 @@ prepare_socks5_launcher() {
 }
 
 start_game() {
-  local p
+  local p rms_mode
   local -a socks_args=()
   local main_class="org.microemu.app.Main" game_cp="$CP"
 
@@ -495,8 +533,10 @@ start_game() {
     echo "[GAME] starting directly (no SOCKS5 configured)"
   fi
   [[ -x "$JAVA_BIN" ]] || { echo "[ERROR] Java 17 runtime missing: $JAVA_BIN"; return 1; }
+  rms_mode="$(get_rms_mode)" || return 1
+  echo "[GAME] RMS: $rms_mode"
 
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$game_cp"     "$main_class"     --rms file     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$game_cp"     "$main_class"     --rms "$rms_mode"     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
@@ -628,7 +668,12 @@ status() {
     echo "Java game:           MISSING ($JAVA_BIN)"
   fi
   echo "Autorestart:         OFF"
-  echo "RMS:                 file (persistent)"
+  echo "RMS configured:      $(get_rms_mode)"
+  if [[ -n "$gpid" ]]; then
+    local current_rms
+    current_rms="$(tr '\0' '\n' < "/proc/$gpid/cmdline" 2>/dev/null | awk '/^--rms$/ {getline; print; exit}' || true)"
+    [[ -n "$current_rms" ]] && echo "RMS running:         $current_rms"
+  fi
   echo "Emulator profile:    $STATE"
   echo "============================================"
 }
@@ -717,8 +762,12 @@ case "${1:-}" in
     (( $# == 1 )) || { echo "[ERROR] rms-reset takes no arguments" >&2; exit 1; }
     reset_rms
     ;;
+  rms-mode)
+    (( $# <= 2 )) || { echo "[ERROR] rms-mode takes one optional argument" >&2; exit 1; }
+    set_rms_mode "${2:-}"
+    ;;
   *)
-    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-errors|game-restart [ip:port[:user:password]|direct]|rms-reset} (no proxy => direct; use rms-reset when stopped)"
+    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-errors|game-restart [ip:port[:user:password]|direct]|rms-reset|rms-mode [file|memory]} (no proxy => direct; use rms-reset when stopped)"
     exit 1
     ;;
 esac
