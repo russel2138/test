@@ -42,7 +42,7 @@ Runtime Raven hiện tại **chưa được port sang mọi distro**. Bootstrap 
 
 - Linux `x86_64/amd64`, không phải ARM64.
 - Có `git`, `bash`, `tar`, `curl` hoặc `wget`, `unzip` hoặc `jar` cùng một số tiện ích shell.
-- TigerVNC portable: Ubuntu `focal` tải bundle release; `jammy`/`noble` yêu cầu `apt-get`, `dpkg-deb`, internet và quyền ghi ở `$HOME`. Debian/Alpine hiện **không được hỗ trợ**.
+- TigerVNC portable: Ubuntu `focal` tải bundle release; Ubuntu `jammy`/`noble` và Debian `bookworm`/`trixie` yêu cầu `apt-get`, `dpkg-deb`, internet và quyền ghi ở `$HOME`. Debian `bookworm`/`trixie` có luồng tải package rootless riêng (chưa kiểm chứng trên container Wispbyte). Alpine hiện **không được hỗ trợ**.
 - Có đủ ổ đĩa 1 GB và RAM 512 MB cho Java 17, MicroEmulator, TigerVNC, file game và state. Java game hiện giới hạn heap mặc định 160 MB nhưng tổng RSS có thể cao hơn.
 - Host cho phép tải và chạy binary Linux, mở port, Java Swing/X11 và game client. CPU 35% vCore free có thể bị giới hạn/dừng khi duy trì tải cao.
 
@@ -58,3 +58,9 @@ Nếu server báo lỗi `git not found`, `unsupported Ubuntu base`, `apt-get/dpk
 - Nếu chỉ có Java không có desktop/X11, phải dùng TigerVNC runtime; `-Djava.awt.headless=true` không thay thế được.
 
 Không có watchdog hay vòng autorestart. Vui lòng xem [tài liệu Startup Wispbyte](https://wispbyte.com/kb/startup-settings) và [Fair Use](https://wispbyte.com/kb/getting-started) trước khi triển khai.
+
+## 5. Lỗi UID 988 trên Wispbyte (16/10/2026)
+
+Log `id: cannot find name for user ID 988` đến từ phiên bản cũ của `raven/bootstrap-runtime.sh`: câu lệnh `id -un` phụ thuộc vào entry trong `/etc/passwd` và làm bootstrap thoát dưới `set -e`. Runtime mới dùng numeric UID (`id -u`) và tắt APT sandbox đổi tài khoản khi tải các `.deb` vào thư mục riêng của server. Không cần quyền root. Đồng thời nhận diện Debian bookworm/trixie nếu Java image không dùng Ubuntu.
+
+Chỉ cần **Restart** server từ panel để launcher pull nhánh `main` mới, không phải upload lại `main.jar`. Nếu vẫn lỗi sau bước `preparing portable TigerVNC`, gửi toàn bộ log để xác định package, distro, dung lượng hoặc binary còn thiếu.
