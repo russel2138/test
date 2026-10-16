@@ -138,7 +138,7 @@ ensure_vnc() {
     return 0
   fi
 
-  local arch codename user
+  local arch codename distro
   arch="$(dpkg --print-architecture 2>/dev/null || uname -m)"
   [[ "$arch" == "amd64" || "$arch" == "x86_64" ]] || {
     echo "[bootstrap] ERROR: only amd64 is supported (got $arch)" >&2
@@ -146,11 +146,12 @@ ensure_vnc() {
   }
 
   . /etc/os-release
+  distro="${ID:-unknown}"
   codename="${VERSION_CODENAME:-}"
 
   # Zampto java_8 is Ubuntu 20.04/focal. Use our prebuilt bundle so startup
   # does not depend on apt repository availability or root permissions.
-  if [[ "$codename" == "focal" ]]; then
+  if [[ "$distro:$codename" == "ubuntu:focal" ]]; then
     install_focal_runtime
   else
     if ! command -v apt-get >/dev/null 2>&1 || ! command -v dpkg-deb >/dev/null 2>&1; then
@@ -158,25 +159,35 @@ ensure_vnc() {
       return 1
     fi
 
-    case "$codename" in
-      jammy|noble) ;;
+    case "$distro:$codename" in
+      ubuntu:jammy|ubuntu:noble|debian:bookworm|debian:trixie) ;;
       *)
-        echo "[bootstrap] ERROR: unsupported Ubuntu base: ${PRETTY_NAME:-unknown} ($codename)" >&2
+        echo "[bootstrap] ERROR: unsupported OS base: ${PRETTY_NAME:-unknown} ($distro:$codename)" >&2
         return 1
         ;;
     esac
 
-    user="$(id -un)"
-    echo "[bootstrap] preparing portable TigerVNC for Ubuntu $codename..."
+    # Container panels can assign a numeric UID without a passwd entry.
+    # Never use 'id -un' here: it fails under 'set -e' for such users.
+    echo "[bootstrap] preparing portable TigerVNC for $distro $codename (uid=$(id -u))..."
     rm -rf "$APTROOT" "$VNC"
     mkdir -p "$APTROOT/state/lists/partial" "$APTROOT/cache/archives/partial" "$APTROOT/log" "$VNC"
 
-    cat > "$APTROOT/sources.list" <<SRC
+    if [[ "$distro" == "ubuntu" ]]; then
+      cat > "$APTROOT/sources.list" <<SRC
 # Unprivileged package download only; nothing is installed system-wide.
 deb [arch=amd64] http://archive.ubuntu.com/ubuntu $codename main universe
 deb [arch=amd64] http://archive.ubuntu.com/ubuntu ${codename}-updates main universe
 deb [arch=amd64] http://security.ubuntu.com/ubuntu ${codename}-security main universe
 SRC
+    else
+      cat > "$APTROOT/sources.list" <<SRC
+# Unprivileged package download only; nothing is installed system-wide.
+deb [arch=amd64] http://deb.debian.org/debian $codename main
+deb [arch=amd64] http://deb.debian.org/debian ${codename}-updates main
+deb [arch=amd64] http://security.debian.org/debian-security ${codename}-security main
+SRC
+    fi
 
     APT_OPTS=(
       -o "Dir::Etc::sourcelist=$APTROOT/sources.list"
@@ -186,7 +197,7 @@ SRC
       -o "Dir::Cache=$APTROOT/cache"
       -o "Dir::Log=$APTROOT/log"
       -o "Debug::NoLocking=1"
-      -o "APT::Sandbox::User=$user"
+      -o "APT::Sandbox::User="
       -o "Acquire::Check-Valid-Until=false"
       -o "Acquire::Retries=5"
     )
