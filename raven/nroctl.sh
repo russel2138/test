@@ -119,7 +119,23 @@ find_game_pid() {
 }
 
 port_listening() {
-  ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$VNC_PORT$"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$VNC_PORT$"
+    return $?
+  fi
+
+  # Some Java hosting images omit iproute2/ss. Inspect the Linux TCP tables
+  # instead, using the hexadecimal port and the kernel LISTEN state (0A).
+  local port_hex
+  printf -v port_hex '%04X' "$VNC_PORT"
+  awk -v port="$port_hex" '
+    FNR == 1 { next }
+    $4 == "0A" {
+      split($2, address, ":")
+      if (toupper(address[2]) == port) found=1
+    }
+    END { exit !found }
+  ' /proc/net/tcp /proc/net/tcp6 2>/dev/null
 }
 
 safe_key() {
