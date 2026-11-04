@@ -8,5 +8,7 @@ for opt in 'HERO_XMX_MB=bad' 'HERO_XMS_MB=900' 'HERO_GEOMETRY=bad' 'HERO_VNC_PUB
     echo "Invalid config passed: $opt" >&2; exit 1
   fi
 done
-bash "$dir/botkeep/start.sh" --check
+output="$(bash "$dir/botkeep/start.sh" --check)"
+[[ "$output" == *"heap=32m..160m"* ]] || { echo "Unexpected Free plan heap default" >&2; exit 1; }
+grep -Fq 'if [[ -f "$GAME_LOG" ]]; then' "$dir/botkeep/start.sh"
 echo 'Botkeep HERO smoke checks passed'

@@ -18,10 +18,14 @@ Separate runtime for the user-supplied HERO-Emulator-V2.jar (Main-Class: loader.
 - Default VNC is **localhost-only on 5901**, no public tunnel. Only if Botkeep allocates a **raw TCP** port for this app, set HERO_VNC_PUBLIC=1 and use Botkeep's SERVER_PORT. HTTP/HTTPS Domains do not by themselves expose raw VNC. VNC password auth does not encrypt traffic.
 - Logs in hero-data/hero.log and hero-data/vnc.log; persistent state in hero-data/home. Back this directory up before reinstall/redeploy.
 
-Default Java heap is -Xms32m -Xmx192m (adjust with HERO_XMS_MB and HERO_XMX_MB); display is 800x600 at :92 (HERO_GEOMETRY, HERO_DISPLAY). The Windows BAT is unused. Do not assume the 512 MiB plan can sustain Java GUI + TigerVNC; inspect cgroup memory and logs for OOM.
+Default Java heap is -Xms32m -Xmx160m (adjust with HERO_XMS_MB and HERO_XMX_MB); display is 800x600 at :92 (HERO_GEOMETRY, HERO_DISPLAY). The Windows BAT is unused. Do not assume the 512 MiB plan can sustain Java GUI + TigerVNC; inspect cgroup memory and logs for OOM.
 
 Requirements: Linux x86_64, Bash, Java 17+ or network access to portable JRE, and Raven's rootless TigerVNC prerequisites (Debian bookworm/trixie or Ubuntu focal/jammy/noble with apt-get/dpkg-deb; no sudo). If the Botkeep image lacks these, this target may fail and you need a supported image. It does not auto-restart, install Wine, run a tunnel, change game saves, or bypass restrictions.
 
 The source JAR contains an encrypted payload. Static manifest checks alone cannot verify its game UI, actual farming behavior, or compatibility; test in the real Botkeep console/VNC.
 
 See Botkeep documentation: https://botkeep.cloud/docs/hosting
+
+## Botkeep Free limits
+
+Botkeep Free shown in panel: 512 MB RAM and 50% CPU. The `—` usage display is not a current measurement. The 160 MiB Java heap cap leaves capacity for JVM native memory, TigerVNC, Linux process libraries and page cache; Java heap is not the application's total RSS. If the container OOMs, inspect actual logs and memory usage instead of automatically raising `HERO_XMX_MB`. CPU throttling may affect game responsiveness even if startup succeeds. After code fixes, type `update` in the Botkeep Console; no repository Sync is necessary while the console launcher is active.

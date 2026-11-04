@@ -29,7 +29,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 [[ "$(uname -m)" == x86_64 || "$(uname -m)" == amd64 ]] || die 'Portable VNC supports x86_64 only.'
 XMS="${HERO_XMS_MB:-32}"
-XMX="${HERO_XMX_MB:-192}"
+XMX="${HERO_XMX_MB:-160}"
 for n in "$XMS" "$XMX"; do [[ "$n" =~ ^[0-9]{1,4}$ ]] || die 'Heap must be an integer (MB).'; done
 (( XMS >= 16 && XMS <= XMX && XMX >= 64 && XMX <= 1024 )) || die 'Heap range: 16<=XMS<=XMX<=1024 MB.'
 DISPLAY_NUM="${HERO_DISPLAY:-:92}"
@@ -128,6 +128,8 @@ done
 [[ -S "/tmp/.X11-unix/X$n" ]] || die 'TigerVNC did not create its X11 socket.'
 export DISPLAY="$DISPLAY_NUM" HOME="$HOME_DIR" XDG_CACHE_HOME="$DATA/cache" TMPDIR="$DATA/tmp"
 log "Launching HERO -Xms${XMS}m -Xmx${XMX}m. VNC port=$PORT public=$PUBLIC"
+# Open the game log synchronously before background Java starts.
+: >> "$GAME_LOG" || die "Cannot create HERO game log: $GAME_LOG"
 LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}" "$JAVA_BIN" \
   -Xms"${XMS}m" -Xmx"${XMX}m" -XX:+UseSerialGC \
   -Djava.awt.headless=false -Dfile.encoding=UTF-8 \
@@ -142,10 +144,15 @@ while kill -0 "$GAME_PID" 2>/dev/null; do
     kill "$GAME_PID" 2>/dev/null || true
     break
   fi
-  if (( $(wc -c < "$GAME_LOG") > 8388608 )); then
-    tail -c 65536 "$GAME_LOG" > "$DATA/.hero-last"
-    cat "$DATA/.hero-last" > "$GAME_LOG"
-    rm -f "$DATA/.hero-last"
+  # Deleting a log should not crash the game supervisor.
+  if [[ -f "$GAME_LOG" ]]; then
+    log_size="$(wc -c < "$GAME_LOG" 2>/dev/null || printf '0')"
+    if [[ "$log_size" =~ ^[0-9]+$ ]] && (( log_size > 8388608 )); then
+      if tail -c 65536 "$GAME_LOG" > "$DATA/.hero-last"; then
+        cat "$DATA/.hero-last" > "$GAME_LOG"
+      fi
+      rm -f "$DATA/.hero-last"
+    fi
   fi
   sleep 15 & wait $! || true
 done
