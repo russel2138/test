@@ -79,6 +79,42 @@ update_files() {
   return 0
 }
 
+show_vnc() {
+  local root data port access pass
+  root="${BOTKEEP_ROOT:-${HOME:-$REPO}}"
+  [[ -d "$root" ]] || root="$REPO"
+  data="${HERO_DATA_DIR:-$root/hero-data}"
+  port="5901"
+  access="0"
+  if [[ -s "$data/vnc-endpoint.txt" ]]; then
+    read -r port access < "$data/vnc-endpoint.txt" || true
+  fi
+  if [[ "$access" == "1" ]]; then
+    log "VNC address: ${HERO_VNC_HOST:-node11.botkeep.cloud}:$port"
+    log 'Direct VNC works only if Botkeep forwards raw TCP on this allocation.'
+    log 'Classic VNC password auth does NOT encrypt the connection.'
+  else
+    log "VNC is currently localhost-only on port $port."
+    log 'A usable SERVER_PORT allocation is needed for external VNC.'
+  fi
+  if [[ -s "$data/runtime/.vnc/passwd" ]]; then
+    if [[ -s "$data/vnc-password.txt" ]]; then
+      pass=""
+      IFS= read -r pass < "$data/vnc-password.txt" || true
+      log "VNC password: ${pass:0:8} (only shown on explicit vnc command)"
+      unset pass
+    elif [[ -n "${VNC_PASSWORD:-}" ]]; then
+      log 'VNC password is set in Botkeep Environment as VNC_PASSWORD.'
+      log 'Its original plaintext is not stored in hero-data.'
+    else
+      log 'VNC auth file exists, but plaintext is not available.'
+      log 'Check the VNC_PASSWORD secret originally configured in Botkeep.'
+    fi
+  else
+    log 'VNC password has not been initialized yet.'
+  fi
+}
+
 start_app() {
   if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
     log "HERO already running (runner PID $APP_PID)."
@@ -136,7 +172,7 @@ if [[ "${1:-}" != --no-fetch ]]; then
   fi
 fi
 start_app
-log 'Console commands: update | restart | stop | status | logs | help'
+log 'Console commands: update | restart | stop | status | logs | vnc | help'
 while :; do
   reap_app
   if IFS= read -r -t 2 command_line; then
@@ -159,6 +195,9 @@ while :; do
         stop_app
         log 'HERO stopped. Console remains active; type restart.'
         ;;
+      vnc)
+        show_vnc
+        ;;
       status)
         if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
           log "Runner active: PID $APP_PID"
@@ -179,6 +218,7 @@ while :; do
         log 'stop: stop game but keep console alive'
         log 'status: print process state'
         log 'logs: last 45 game log lines'
+        log 'vnc: show VNC endpoint and password on demand'
         ;;
       "") ;;
       *) log "Unknown command: $command_line (help for supported commands)" ;;

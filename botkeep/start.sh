@@ -36,8 +36,18 @@ DISPLAY_NUM="${HERO_DISPLAY:-:92}"
 GEOMETRY="${HERO_GEOMETRY:-800x600}"
 [[ "$DISPLAY_NUM" =~ ^:[1-9][0-9]?$ ]] || die 'HERO_DISPLAY must be :1..:99.'
 [[ "$GEOMETRY" =~ ^[0-9]{3,4}x[0-9]{3,4}$ ]] || die 'HERO_GEOMETRY must be WIDTHxHEIGHT.'
-PUBLIC="${HERO_VNC_PUBLIC:-0}"
-[[ "$PUBLIC" == 0 || "$PUBLIC" == 1 ]] || die 'HERO_VNC_PUBLIC must be 0 or 1.'
+# Botkeep exposes its assigned port as SERVER_PORT. Use it by default;
+# an explicit HERO_VNC_PUBLIC=0 retains localhost-only mode.
+PUBLIC="${HERO_VNC_PUBLIC:-auto}"
+if [[ "$PUBLIC" == auto ]]; then
+  if [[ "${SERVER_PORT:-}" =~ ^[0-9]{4,5}$ ]] &&
+     (( SERVER_PORT >= 1024 && SERVER_PORT <= 65535 )); then
+    PUBLIC=1
+  else
+    PUBLIC=0
+  fi
+fi
+[[ "$PUBLIC" == 0 || "$PUBLIC" == 1 ]] || die 'HERO_VNC_PUBLIC must be auto, 0 or 1.'
 if [[ "$PUBLIC" == 1 ]]; then
   [[ -n "${SERVER_PORT:-}" ]] || die 'Raw TCP SERVER_PORT must be assigned by Botkeep before public VNC.'
   PORT="${HERO_VNC_PORT:-$SERVER_PORT}"
@@ -126,6 +136,13 @@ for _ in {1..30}; do
   sleep 0.2
 done
 [[ -S "/tmp/.X11-unix/X$n" ]] || die 'TigerVNC did not create its X11 socket.'
+# Only connection metadata goes into the status file; never write passwords here.
+printf '%s %s\n' "$PORT" "$PUBLIC" > "$DATA/vnc-endpoint.txt"
+if [[ "$PUBLIC" == 1 ]]; then
+  log "VNC listening on assigned Botkeep port $PORT (0.0.0.0)."
+else
+  log "VNC localhost only: $PORT. No valid SERVER_PORT was detected (or public access was disabled)."
+fi
 export DISPLAY="$DISPLAY_NUM" HOME="$HOME_DIR" XDG_CACHE_HOME="$DATA/cache" TMPDIR="$DATA/tmp"
 log "Launching HERO -Xms${XMS}m -Xmx${XMX}m. VNC port=$PORT public=$PUBLIC"
 # Open the game log synchronously before background Java starts.
