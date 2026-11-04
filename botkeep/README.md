@@ -8,7 +8,12 @@ Separate runtime for the user-supplied HERO-Emulator-V2.jar (Main-Class: loader.
 
 - Import repository russel2138/test, branch botkeep/hero-v2, root directory, Java runtime.
 - Upload HERO-Emulator-V2.jar from your original HERO-Emulator-V2.zip to Botkeep Files in your HOME directory; alternatively upload the ZIP if unzip is installed. The binary is deliberately **not** committed to public GitHub.
-- Set startup command to: **bash botkeep/start.sh**. One-off preflight: **bash botkeep/start.sh --check**.
+- Recommended Pterodactyl startup command for console updates: **bash botkeep/console.sh** (type `update` in Botkeep Console to download, validate and restart the latest HERO code without GitHub Import/Sync). One-off preflight: **bash botkeep/start.sh --check**.
+- **One-time recovery from the earlier broken start.sh:** If the server crashes before it can receive console commands, set its Startup command once to:
+  ```bash
+  bash -lc 'u=https://raw.githubusercontent.com/russel2138/test/botkeep/hero-v2/botkeep/console.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u" -o /tmp/hero-console.sh; else wget -qO /tmp/hero-console.sh "$u"; fi && exec bash /tmp/hero-console.sh'
+  ```
+  After this first change, use the console command `update` for future fixes; no repository Sync needed. This remote entrypoint downloads the latest allowlisted scripts on boot and retains the standard Botkeep console stdin. If curl/wget or GitHub access is blocked, it reports the error and cannot self-update.
 - Set Environment secret VNC_PASSWORD (at least 8 characters; classic VNC only uses the first 8) if you want a consistent password. Otherwise one is generated and kept in hero-data/vnc-password.txt, mode 0600.
 - Default VNC is **localhost-only on 5901**, no public tunnel. Only if Botkeep allocates a **raw TCP** port for this app, set HERO_VNC_PUBLIC=1 and use Botkeep's SERVER_PORT. HTTP/HTTPS Domains do not by themselves expose raw VNC. VNC password auth does not encrypt traffic.
 - Logs in hero-data/hero.log and hero-data/vnc.log; persistent state in hero-data/home. Back this directory up before reinstall/redeploy.
