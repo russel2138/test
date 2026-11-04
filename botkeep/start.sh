@@ -30,12 +30,12 @@ trap 'exit 143' TERM
 [[ "$(uname -m)" == x86_64 || "$(uname -m)" == amd64 ]] || die 'Portable VNC supports x86_64 only.'
 XMS="${HERO_XMS_MB:-32}"
 XMX="${HERO_XMX_MB:-192}"
-for n in "$XMS" "$XMX"; do [[ "$n" =$ ^[0-9]{1,4}$ ]] || die 'Heap must be an integer (MB).'; done
+for n in "$XMS" "$XMX"; do [[ "$n" =~ ^[0-9]{1,4}$ ]] || die 'Heap must be an integer (MB).'; done
 (( XMS >= 16 && XMS <= XMX && XMX >= 64 && XMX <= 1024 )) || die 'Heap range: 16<=XMS<=XMX<=1024 MB.'
 DISPLAY_NUM="${HERO_DISPLAY:-:92}"
 GEOMETRY="${HERO_GEOMETRY:-800x600}"
-[[ "$DISPLAY_NUM" =$ ^:[1-9][0-9]?$ ]] || die 'HERO_DISPLAY must be :1..:99.'
-[[ "$GEOMETRY" =$ ^[0-9]{3,4}x[0-9]{3,4}$ ]] || die 'HERO_GEOMETRY must be WIDTHxHEIGHT.'
+[[ "$DISPLAY_NUM" =~ ^:[1-9][0-9]?$ ]] || die 'HERO_DISPLAY must be :1..:99.'
+[[ "$GEOMETRY" =~ ^[0-9]{3,4}x[0-9]{3,4}$ ]] || die 'HERO_GEOMETRY must be WIDTHxHEIGHT.'
 PUBLIC="${HERO_VNC_PUBLIC:-0}"
 [[ "$PUBLIC" == 0 || "$PUBLIC" == 1 ]] || die 'HERO_VNC_PUBLIC must be 0 or 1.'
 if [[ "$PUBLIC" == 1 ]]; then
@@ -47,7 +47,7 @@ else
   PORT="${HERO_VNC_PORT:-5901}"
   LOCALHOST=yes
 fi
-[[ "$PORT" =$ ^[0-9]{4,5}$ ]] && (( PORT >= 1024 && PORT <= 65535 )) || die 'Invalid VNC port.'
+[[ "$PORT" =~ ^[0-9]{4,5}$ ]] && (( PORT >= 1024 && PORT <= 65535 )) || die 'Invalid VNC port.'
 if [[ "${1:-}" == --check ]]; then
   log "CPU=$(uname -m), heap=${XMS}m..${XMX}m, display=$GEOMETRY, port=$PORT, public=$PUBLIC"
   log "java=$(command -v java || echo missing), apt-get=$(command -v apt-get || echo missing), dpkg-deb=$(command -v dpkg-deb || echo missing)"
@@ -75,7 +75,7 @@ export NRO_ROOT="$ROOT" NRO_DATA="$RUNTIME" RAVEN_SKIP_MICROEMU=1
 JAVA_BIN=""
 if command -v java >/dev/null; then
   ver="$(java -version 2>&1 | head -n1 || true)"
-  if [[ "$ver" =$ (openjdk|version)[[:space:]]*\"?([0-9]+) ]] && (( BASH_REMATCH[2] >= 17 )); then
+  if [[ "$ver" =~ (openjdk|version)[[:space:]]*\"?([0-9]+) ]] && (( BASH_REMATCH[2] >= 17 )); then
     JAVA_BIN="$(command -v java)"
     export RAVEN_SKIP_JAVA=1
   fi
