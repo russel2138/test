@@ -229,6 +229,7 @@ SRC
   echo "[bootstrap] TigerVNC runtime + XKB data ready"
 }
 
-ensure_java17
-ensure_microemu
+# HERO Botkeep opts out of redundant Java/MicroEmulator downloads. Raven defaults unchanged.
+if [[ "${RAVEN_SKIP_JAVA:-0}" != "1" ]]; then ensure_java17; fi
+if [[ "${RAVEN_SKIP_MICROEMU:-0}" != "1" ]]; then ensure_microemu; fi
 ensure_vnc

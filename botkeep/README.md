@@ -1,0 +1,32 @@
+# HERO Emulator V2 on Botkeep (experimental)
+
+Separate runtime for the user-supplied HERO-Emulator-V2.jar (Main-Class: loader.Bootstrap). This is NOT the repo's original NRO game or the Altare nroemu profile. Reuses raven/bootstrap-runtime.sh for rootless TigerVNC; skips downloading MicroEmulator. Existing Raven/Blitz/Wispbyte behavior is unchanged.
+
+**Not yet live-tested on Botkeep.** Botkeep supports Java applications but does not promise raw inbound TCP, OS packages, X11, compatible distro, or unlimited resources. The current Free v2 resource pool is 512 MiB RAM / 0.5 vCore / 1 GiB storage. Verify host policy and game rules; do not bypass resource or network restrictions.
+
+## GitHub deployment
+
+- Import repository russel2138/test, branch botkeep/hero-v2, root directory, Java runtime.
+- Upload HERO-Emulator-V2.jar from your original HERO-Emulator-V2.zip to Botkeep Files in your HOME directory; alternatively upload the ZIP if unzip is installed. The binary is deliberately **not** committed to public GitHub.
+- Recommended Pterodactyl startup command for console updates: **bash botkeep/console.sh** (type `update` in Botkeep Console to download, validate and restart the latest HERO code without GitHub Import/Sync). One-off preflight: **bash botkeep/start.sh --check**.
+- **One-time recovery from the earlier broken start.sh:** If the server crashes before it can receive console commands, set its Startup command once to:
+  ```bash
+  bash -lc 'u=https://raw.githubusercontent.com/russel2138/test/botkeep/hero-v2/botkeep/console.sh; if command -v curl >/dev/null 2>&1; then curl -fsSL "$u" -o /tmp/hero-console.sh; else wget -qO /tmp/hero-console.sh "$u"; fi && exec bash /tmp/hero-console.sh'
+  ```
+  After this first change, use the console command `update` for future fixes; no repository Sync needed. This remote entrypoint downloads the latest allowlisted scripts on boot and retains the standard Botkeep console stdin. If curl/wget or GitHub access is blocked, it reports the error and cannot self-update.
+- Set Environment secret VNC_PASSWORD (at least 8 characters; classic VNC only uses the first 8) if you want a consistent password. Otherwise one is generated and kept in hero-data/vnc-password.txt, mode 0600. Use the `vnc` console command to show the generated 8-character password; an Environment-provided password is not recoverable from the VNC auth file and should be read from your Environment settings.
+- VNC now **automatically binds the assigned SERVER_PORT on 0.0.0.0** when SERVER_PORT is valid. On the current Botkeep allocation this should be `node11.botkeep.cloud:53360`. Type `vnc` in Botkeep Console to see the displayed address and generated password on demand. If no SERVER_PORT is available, VNC remains localhost-only on 5901. Set HERO_VNC_PUBLIC=0 to explicitly keep it private.
+- **Network limitation:** Botkeep documents HTTP on SERVER_PORT, but does not explicitly guarantee raw TCP forwarding for VNC. Test with a standard VNC viewer. HTTP/HTTPS Domains do not automatically serve VNC. Plain VNC password authentication is not encrypted; avoid exposing sensitive sessions over untrusted networks without a supported encrypted transport.
+- Logs in hero-data/hero.log and hero-data/vnc.log; persistent state in hero-data/home. Back this directory up before reinstall/redeploy.
+
+Default Java heap is -Xms32m -Xmx160m (adjust with HERO_XMS_MB and HERO_XMX_MB); display is 800x600 at :92 (HERO_GEOMETRY, HERO_DISPLAY). The Windows BAT is unused. Do not assume the 512 MiB plan can sustain Java GUI + TigerVNC; inspect cgroup memory and logs for OOM.
+
+Requirements: Linux x86_64, Bash, Java 17+ or network access to portable JRE, and Raven's rootless TigerVNC prerequisites (Debian bookworm/trixie or Ubuntu focal/jammy/noble with apt-get/dpkg-deb; no sudo). If the Botkeep image lacks these, this target may fail and you need a supported image. It does not auto-restart, install Wine, run a tunnel, change game saves, or bypass restrictions.
+
+The source JAR contains an encrypted payload. Static manifest checks alone cannot verify its game UI, actual farming behavior, or compatibility; test in the real Botkeep console/VNC.
+
+See Botkeep documentation: https://botkeep.cloud/docs/hosting
+
+## Botkeep Free limits
+
+Botkeep Free shown in panel: 512 MB RAM and 50% CPU. The `—` usage display is not a current measurement. The 160 MiB Java heap cap leaves capacity for JVM native memory, TigerVNC, Linux process libraries and page cache; Java heap is not the application's total RSS. If the container OOMs, inspect actual logs and memory usage instead of automatically raising `HERO_XMX_MB`. CPU throttling may affect game responsiveness even if startup succeeds. After code fixes, type `update` in the Botkeep Console; no repository Sync is necessary while the console launcher is active.

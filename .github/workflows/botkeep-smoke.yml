@@ -1,0 +1,22 @@
+name: Botkeep HERO shell smoke
+
+on:
+  push:
+    branches: [botkeep/hero-v2]
+    paths:
+      - "botkeep/**"
+      - "raven/bootstrap-runtime.sh"
+      - ".github/workflows/botkeep-smoke.yml"
+  pull_request:
+    paths:
+      - "botkeep/**"
+      - "raven/bootstrap-runtime.sh"
+      - ".github/workflows/botkeep-smoke.yml"
+
+jobs:
+  shell-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Bash syntax and Botkeep config
+        run: bash botkeep/test.sh
