@@ -59,9 +59,15 @@ load_display_settings() {
   local geometry width height extra
   [[ -s "$DISPLAY_SETTINGS_FILE" ]] || return 0
   read -r geometry width height extra < "$DISPLAY_SETTINGS_FILE" || true
-  if [[ "$geometry" =~ ^([0-9]+)x([0-9]+)$ && "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ && -z "${extra:-}" ]] &&
-     (( ${BASH_REMATCH[1]} >= 320 && ${BASH_REMATCH[1]} <= 1920 &&
-        ${BASH_REMATCH[2]} >= 240 && ${BASH_REMATCH[2]} <= 1080 &&
+  if [[ "$geometry" =~ ^([0-9]+)x([0-9]+)$ ]]; then
+    local desktop_width="${BASH_REMATCH[1]}" desktop_height="${BASH_REMATCH[2]}"
+  else
+    echo "[DISPLAY] Ignoring invalid saved screen settings" >&2
+    return 0
+  fi
+  if [[ "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ && -z "${extra:-}" ]] &&
+     (( desktop_width >= 320 && desktop_width <= 1920 &&
+        desktop_height >= 240 && desktop_height <= 1080 &&
         width >= 160 && width <= 1920 && height >= 120 && height <= 1080 )); then
     VNC_GEOMETRY="$geometry"
     DEVICE_WIDTH="$width"
