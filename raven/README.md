@@ -165,17 +165,22 @@ Credentials are passed to the **game JVM** through environment variables rather 
 Only Java sockets respecting JVM SOCKS proxy settings are redirected. This is not a container-wide proxy and does not affect the launcher or VNC. Verify real game connections before relying on the proxy.
 
 
-## Enzonic: larger VNC and MicroEmulator screen (optional)
+## Enzonic: resize from the server Console (no Startup Command editing)
 
-For Enzonic servers using this **Raven/Pterodactyl Java runtime** (and a launcher JAR based on `raven/ptero-launcher.jar`), add these environment variables to the **existing** startup command:
+The Raven-based runtime supports a persistent per-server resolution setting.
 
-```bash
-VNC_GEOMETRY=1280x800 NRO_DEVICE_WIDTH=1100 NRO_DEVICE_HEIGHT=680 java -jar server.jar
+In the **Enzonic Console** (commands, not an SSH shell):
+
+```text
+update
+resolution wide
+restart
 ```
 
-Replace `java -jar server.jar` with your server's **existing Java launcher command**, keeping the three variable assignments in front. These variables only affect this server and require a full stop/start so the VNC server restarts at the new geometry. No game/RMS reset or emulator replacement is required.
+- `update` reloads the Raven runtime from GitHub.
+- `resolution wide` saves VNC 1280x800 and MicroEmulator device 1100x680 under `nro-data/display-size.conf`.
+- `restart` recreates VNC and the game using that setting. Reconnect the VNC viewer when the session restarts.
+- `start` and future `restart` commands continue using the saved screen size, including after full server restarts.
+- `resolution` shows the selected size. `resolution normal` restores 640x480 / 320x240, and `resolution 1024x768` selects a custom desktop size.
 
-- `VNC_GEOMETRY=1280x800` enlarges the virtual TigerVNC desktop (not the network port).
-- `NRO_DEVICE_WIDTH=1100` and `NRO_DEVICE_HEIGHT=680` enlarge the MicroEmulator resizable device from its 320×240 default; game rendering/layout may not scale proportionally. Adjust down if content is clipped or too slow.
-- Other hosts keep existing defaults when these variables are omitted. This setting applies to **MicroEmulator**, not HERO V2 or the Altare Java desktop NRO emulator.
-- The Enzonic server's actual launcher name and runtime have not been confirmed; do not replace its JAR with `server.jar` unless that is already the configured launcher.
+This does **not** modify the HERO V2 JAR or other hosts. Some mobile game clients may not scale their internal graphics even if the MicroEmulator device becomes larger. If Enzonic is using a different launcher than Raven, these console commands will not appear; confirm its startup runtime first.
