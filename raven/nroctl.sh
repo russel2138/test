@@ -42,6 +42,16 @@ VNC_LIB="$VNC_ROOT/usr/lib/x86_64-linux-gnu:$VNC_ROOT/lib/x86_64-linux-gnu:$VNC_
 DISPLAY_NUM=":1"
 VNC_PORT="${VNC_PORT:-${SERVER_PORT:-17149}}"
 VNC_GEOMETRY="${VNC_GEOMETRY:-640x480}"
+# Optional larger MicroEmulator device for wide VNC desktops (e.g. Enzonic).
+# Defaults preserve existing hosts and their UI sizing.
+DEVICE_WIDTH="${NRO_DEVICE_WIDTH:-320}"
+DEVICE_HEIGHT="${NRO_DEVICE_HEIGHT:-240}"
+if [[ ! "$DEVICE_WIDTH" =~ ^[0-9]+$ || ! "$DEVICE_HEIGHT" =~ ^[0-9]+$ ]] ||
+   (( DEVICE_WIDTH < 160 || DEVICE_WIDTH > 1920 || DEVICE_HEIGHT < 120 || DEVICE_HEIGHT > 1080 )); then
+  echo "[DISPLAY] Invalid NRO_DEVICE_WIDTH/HEIGHT; using 320x240" >&2
+  DEVICE_WIDTH=320
+  DEVICE_HEIGHT=240
+fi
 
 JAVA_BIN="${JAVA_BIN:-$DATA/java17/bin/java}"
 JAVA_XMS="${JAVA_XMS:-16m}"
@@ -552,7 +562,7 @@ start_game() {
   rms_mode="$(get_rms_mode)" || return 1
   echo "[GAME] RMS: $rms_mode"
 
-  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$game_cp"     "$main_class"     --rms "$rms_mode"     --resizableDevice 320 240     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
+  DISPLAY="$DISPLAY_NUM"   LD_LIBRARY_PATH="$VNC_LIB:${LD_LIBRARY_PATH:-}"   NRO_SOCKS5_USER="$SOCKS_USER" NRO_SOCKS5_PASS="$SOCKS_PASS" nohup "$JAVA_BIN"     -Xms"$JAVA_XMS"     -Xmx"$JAVA_XMX"     -XX:+UseSerialGC     "${socks_args[@]}"     -Duser.home="$EMU_HOME"     -Dswing.defaultlaf=javax.swing.plaf.nimbus.NimbusLookAndFeel     -cp "$game_cp"     "$main_class"     --rms "$rms_mode"     --resizableDevice "$DEVICE_WIDTH" "$DEVICE_HEIGHT"     --appclasspath "$GAME"     --propertiesjad "$JAD"     --quit     "$MIDLET_CLASS"     >"$GAME_LOG" 2>&1 </dev/null &
 
   echo $! > "$GAME_PID"
   sleep 1
