@@ -140,6 +140,7 @@ print_help() {
   echo "  game-restart [ip:port[:user:password]]"
   echo "  rms-reset          # back up/reset saved file RMS; only when stopped"
   echo "  rms-mode [file|memory]  # per-host RMS; changes apply after restart"
+  echo "  resolution [wide|normal|WIDTHxHEIGHT]  # persist VNC + game size"
   echo "  status"
   echo "  log | log-stop"
   echo "  game-errors        # print the latest game thread crash without live logs"
@@ -189,6 +190,9 @@ while true; do
       ;;
     rms-mode)
       "$SCRIPT_DIR/nroctl.sh" rms-mode "${args[@]}"
+      ;;
+    resolution)
+      "$SCRIPT_DIR/nroctl.sh" resolution "${args[@]}"
       ;;
     status)
       "$SCRIPT_DIR/nroctl.sh" status
