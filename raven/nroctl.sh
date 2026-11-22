@@ -12,6 +12,7 @@ PROFILES_DIR="$DATA/profiles"
 SELECTION_FILE="$DATA/current-selection.env"
 PROXY_STATE_FILE="$DATA/current-proxy.env"
 RMS_MODE_FILE="$DATA/rms-mode.conf"
+DISPLAY_SETTINGS_FILE="$DATA/display-size.conf"
 # Remove credentials persisted by previous releases. Proxy settings are now per launch.
 rm -f "$PROXY_STATE_FILE"
 
@@ -52,6 +53,56 @@ if [[ ! "$DEVICE_WIDTH" =~ ^[0-9]+$ || ! "$DEVICE_HEIGHT" =~ ^[0-9]+$ ]] ||
   DEVICE_WIDTH=320
   DEVICE_HEIGHT=240
 fi
+
+# A per-server setting controlled from the panel console. Saved outside the Git checkout.
+load_display_settings() {
+  local geometry width height extra
+  [[ -s "$DISPLAY_SETTINGS_FILE" ]] || return 0
+  read -r geometry width height extra < "$DISPLAY_SETTINGS_FILE" || true
+  if [[ "$geometry" =~ ^([0-9]+)x([0-9]+)$ && "$width" =~ ^[0-9]+$ && "$height" =~ ^[0-9]+$ && -z "${extra:-}" ]] &&
+     (( ${BASH_REMATCH[1]} >= 320 && ${BASH_REMATCH[1]} <= 1920 &&
+        ${BASH_REMATCH[2]} >= 240 && ${BASH_REMATCH[2]} <= 1080 &&
+        width >= 160 && width <= 1920 && height >= 120 && height <= 1080 )); then
+    VNC_GEOMETRY="$geometry"
+    DEVICE_WIDTH="$width"
+    DEVICE_HEIGHT="$height"
+  else
+    echo "[DISPLAY] Ignoring invalid saved screen settings" >&2
+  fi
+}
+set_display_settings() {
+  local arg="${1:-}" w h
+  case "$arg" in
+    ""|show)
+      echo "[DISPLAY] Configured VNC: $VNC_GEOMETRY, MicroEmulator device: ${DEVICE_WIDTH}x${DEVICE_HEIGHT}"
+      echo "[DISPLAY] Use: resolution wide | normal | WIDTHxHEIGHT"
+      return 0 ;;
+    wide|1280x800)
+      w=1280; h=800; DEVICE_WIDTH=1100; DEVICE_HEIGHT=680 ;;
+    normal|640x480)
+      w=640; h=480; DEVICE_WIDTH=320; DEVICE_HEIGHT=240 ;;
+    *)
+      if [[ ! "$arg" =~ ^([0-9]+)x([0-9]+)$ ]]; then
+        echo "[DISPLAY] Expected: resolution wide | normal | WIDTHxHEIGHT" >&2
+        return 1
+      fi
+      w="${BASH_REMATCH[1]}"; h="${BASH_REMATCH[2]}"
+      if (( w < 320 || w > 1920 || h < 240 || h > 1080 )); then
+        echo "[DISPLAY] Supported desktop range: 320x240 to 1920x1080" >&2
+        return 1
+      fi
+      DEVICE_WIDTH=$(( w - 180 )); DEVICE_HEIGHT=$(( h - 120 ))
+      (( DEVICE_WIDTH >= 160 )) || DEVICE_WIDTH=160
+      (( DEVICE_HEIGHT >= 120 )) || DEVICE_HEIGHT=120
+      ;;
+  esac
+  VNC_GEOMETRY="${w}x${h}"
+  mkdir -p "$DATA" || return 1
+  printf '%s %s %s\n' "$VNC_GEOMETRY" "$DEVICE_WIDTH" "$DEVICE_HEIGHT" > "$DISPLAY_SETTINGS_FILE" || return 1
+  echo "[DISPLAY] Saved VNC=$VNC_GEOMETRY, device=${DEVICE_WIDTH}x${DEVICE_HEIGHT}"
+  echo "[DISPLAY] Type 'restart' in console to apply (will reconnect VNC)."
+}
+load_display_settings
 
 JAVA_BIN="${JAVA_BIN:-$DATA/java17/bin/java}"
 JAVA_XMS="${JAVA_XMS:-16m}"
@@ -694,6 +745,8 @@ status() {
     echo "Java game:           MISSING ($JAVA_BIN)"
   fi
   echo "Autorestart:         OFF"
+  echo "VNC desktop:         $VNC_GEOMETRY"
+  echo "MicroEmulator device: ${DEVICE_WIDTH}x${DEVICE_HEIGHT}"
   echo "RMS configured:      $(get_rms_mode)"
   if [[ -n "$gpid" ]]; then
     local current_rms
@@ -792,8 +845,12 @@ case "${1:-}" in
     (( $# <= 2 )) || { echo "[ERROR] rms-mode takes one optional argument" >&2; exit 1; }
     set_rms_mode "${2:-}"
     ;;
+  resolution)
+    (( $# <= 2 )) || { echo "[ERROR] resolution takes one optional argument" >&2; exit 1; }
+    set_display_settings "${2:-}"
+    ;;
   *)
-    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-errors|game-restart [ip:port[:user:password]|direct]|rms-reset|rms-mode [file|memory]} (no proxy => direct; use rms-reset when stopped)"
+    echo "Usage: $0 {list|start [emulator game] [ip:port[:user:password]|direct]|stop|restart [emulator game] [ip:port[:user:password]|direct]|status|log|log-follow|game-errors|game-restart [ip:port[:user:password]|direct]|rms-reset|rms-mode [file|memory]|resolution [wide|normal|WIDTHxHEIGHT]} (no proxy => direct; use rms-reset when stopped)"
     exit 1
     ;;
 esac
